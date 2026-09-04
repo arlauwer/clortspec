@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A SKIRT parameter file © Astronomical Observatory, Ghent University -->
+<skirt-simulation-hierarchy type="MonteCarloSimulation" format="9" producer="SKIRT v9.0 (git bc39216 built on 10/08/2026 at 14:03:13)" time="2026-08-13T12:01:16.414">
+    <MonteCarloSimulation userLevel="Regular" simulationMode="ExtinctionOnly" iteratePrimaryEmission="false" iterateSecondaryEmission="false" numPackets="1e7">
+        
+		<random type="Random">
+            <Random seed="0"/>
+        </random>
+
+        <units type="Units">
+            <ExtragalacticUnits wavelengthOutputStyle="Energy" fluxOutputStyle="Energy"/>
+        </units>
+
+        <cosmology type="Cosmology">
+            <LocalUniverseCosmology/>
+        </cosmology>
+
+        <sourceSystem type="SourceSystem">
+            <SourceSystem minWavelength="10 keV" maxWavelength="0.3 keV">
+            
+                <sources type="Source">
+                    <PointSource positionX="0 pc" positionY="0 pc" positionZ="0 pc" wavelengthBias="0.5">
+                        <sed type="SED">
+                            <FileSED filename="sed.txt"/>
+                        </sed>
+                        <normalization type="LuminosityNormalization">
+                            <IntegratedLuminosityNormalization wavelengthRange="Source" integratedLuminosity="{integratedLuminosity}"/>
+                        </normalization>
+                    </PointSource>
+                </sources>
+                
+            </SourceSystem>
+        </sourceSystem>
+        <mediumSystem type="MediumSystem">
+            <MediumSystem>
+
+                <photonPacketOptions type="PhotonPacketOptions">
+                    <PhotonPacketOptions explicitAbsorption="false" forceScattering="false" minWeightReduction="1e4" minScattEvents="0" pathLengthBias="0"/>
+                </photonPacketOptions>
+
+                <lyaOptions type="LyaOptions">
+                    <LyaOptions lyaAccelerationScheme="Variable" lyaAccelerationStrength="1" includeHubbleFlow="false"/>
+                </lyaOptions>
+
+                <radiationFieldOptions type="RadiationFieldOptions">
+                    <RadiationFieldOptions storeRadiationField="false"/>
+                </radiationFieldOptions>
+
+				<media type="Medium">
+                    <SphericalCellMedium filename="medium.txt" autoRevolve="Azimuth" numAzimuthRevolveBins="2" massType="NumberDensity" massFraction="1" importMetallicity="false" importTemperature="true" maxTemperature="0 K" importVelocity="false" importMagneticField="false" importVariableMixParams="true" useColumns="*">
+                        <materialMixFamily type="MaterialMixFamily">
+                            <XRayIonicGasMixFamily ions="H+0, H+1, He+0, He+1, He+2, Li+0, Li+1, Li+2, Li+3, Be+0, Be+1, Be+2, Be+3, Be+4, B+0, B+1, B+2, B+3, B+4, B+5, C+0, C+1, C+2, C+3, C+4, C+5, C+6, N+0, N+1, N+2, N+3, N+4, N+5, N+6, N+7, O+0, O+1, O+2, O+3, O+4, O+5, O+6, O+7, O+8, F+0, F+1, F+2, F+3, F+4, F+5, F+6, F+7, F+8, F+9, Ne+0, Ne+1, Ne+2, Ne+3, Ne+4, Ne+5, Ne+6, Ne+7, Ne+8, Ne+9, Ne+10, Na+0, Na+1, Na+2, Na+3, Na+4, Na+5, Na+6, Na+7, Na+8, Na+9, Na+10, Na+11, Mg+0, Mg+1, Mg+2, Mg+3, Mg+4, Mg+5, Mg+6, Mg+7, Mg+8, Mg+9, Mg+10, Mg+11, Mg+12, Al+0, Al+1, Al+2, Al+3, Al+4, Al+5, Al+6, Al+7, Al+8, Al+9, Al+10, Al+11, Al+12, Al+13, Si+0, Si+1, Si+2, Si+3, Si+4, Si+5, Si+6, Si+7, Si+8, Si+9, Si+10, Si+11, Si+12, Si+13, Si+14, P+0, P+1, P+2, P+3, P+4, P+5, P+6, P+7, P+8, P+9, P+10, P+11, P+12, P+13, P+14, P+15, S+0, S+1, S+2, S+3, S+4, S+5, S+6, S+7, S+8, S+9, S+10, S+11, S+12, S+13, S+14, S+15, S+16, Cl+0, Cl+1, Cl+2, Cl+3, Cl+4, Cl+5, Cl+6, Cl+7, Cl+8, Cl+9, Cl+10, Cl+11, Cl+12, Cl+13, Cl+14, Cl+15, Cl+16, Cl+17, Ar+0, Ar+1, Ar+2, Ar+3, Ar+4, Ar+5, Ar+6, Ar+7, Ar+8, Ar+9, Ar+10, Ar+11, Ar+12, Ar+13, Ar+14, Ar+15, Ar+16, Ar+17, Ar+18, K+0, K+1, K+2, K+3, K+4, K+5, K+6, K+7, K+8, K+9, K+10, K+11, K+12, K+13, K+14, K+15, K+16, K+17, K+18, K+19, Ca+0, Ca+1, Ca+2, Ca+3, Ca+4, Ca+5, Ca+6, Ca+7, Ca+8, Ca+9, Ca+10, Ca+11, Ca+12, Ca+13, Ca+14, Ca+15, Ca+16, Ca+17, Ca+18, Ca+19, Ca+20, Sc+0, Sc+1, Sc+2, Sc+3, Sc+4, Sc+5, Sc+6, Sc+7, Sc+8, Sc+9, Sc+10, Sc+11, Sc+12, Sc+13, Sc+14, Sc+15, Sc+16, Sc+17, Sc+18, Sc+19, Sc+20, Sc+21, Ti+0, Ti+1, Ti+2, Ti+3, Ti+4, Ti+5, Ti+6, Ti+7, Ti+8, Ti+9, Ti+10, Ti+11, Ti+12, Ti+13, Ti+14, Ti+15, Ti+16, Ti+17, Ti+18, Ti+19, Ti+20, Ti+21, Ti+22, V+0, V+1, V+2, V+3, V+4, V+5, V+6, V+7, V+8, V+9, V+10, V+11, V+12, V+13, V+14, V+15, V+16, V+17, V+18, V+19, V+20, V+21, V+22, V+23, Cr+0, Cr+1, Cr+2, Cr+3, Cr+4, Cr+5, Cr+6, Cr+7, Cr+8, Cr+9, Cr+10, Cr+11, Cr+12, Cr+13, Cr+14, Cr+15, Cr+16, Cr+17, Cr+18, Cr+19, Cr+20, Cr+21, Cr+22, Cr+23, Cr+24, Mn+0, Mn+1, Mn+2, Mn+3, Mn+4, Mn+5, Mn+6, Mn+7, Mn+8, Mn+9, Mn+10, Mn+11, Mn+12, Mn+13, Mn+14, Mn+15, Mn+16, Mn+17, Mn+18, Mn+19, Mn+20, Mn+21, Mn+22, Mn+23, Mn+24, Mn+25, Fe+0, Fe+1, Fe+2, Fe+3, Fe+4, Fe+5, Fe+6, Fe+7, Fe+8, Fe+9, Fe+10, Fe+11, Fe+12, Fe+13, Fe+14, Fe+15, Fe+16, Fe+17, Fe+18, Fe+19, Fe+20, Fe+21, Fe+22, Fe+23, Fe+24, Fe+25, Fe+26, Co+0, Co+1, Co+2, Co+3, Co+4, Co+5, Co+6, Co+7, Co+8, Co+9, Co+10, Co+11, Co+12, Co+13, Co+14, Co+15, Co+16, Co+17, Co+18, Co+19, Co+20, Co+21, Co+22, Co+23, Co+24, Co+25, Co+26, Co+27, Ni+0, Ni+1, Ni+2, Ni+3, Ni+4, Ni+5, Ni+6, Ni+7, Ni+8, Ni+9, Ni+10, Ni+11, Ni+12, Ni+13, Ni+14, Ni+15, Ni+16, Ni+17, Ni+18, Ni+19, Ni+20, Ni+21, Ni+22, Ni+23, Ni+24, Ni+25, Ni+26, Ni+27, Ni+28, Cu+0, Cu+1, Cu+2, Cu+3, Cu+4, Cu+5, Cu+6, Cu+7, Cu+8, Cu+9, Cu+10, Cu+11, Cu+12, Cu+13, Cu+14, Cu+15, Cu+16, Cu+17, Cu+18, Cu+19, Cu+20, Cu+21, Cu+22, Cu+23, Cu+24, Cu+25, Cu+26, Cu+27, Cu+28, Cu+29, Zn+0, Zn+1, Zn+2, Zn+3, Zn+4, Zn+5, Zn+6, Zn+7, Zn+8, Zn+9, Zn+10, Zn+11, Zn+12, Zn+13, Zn+14, Zn+15, Zn+16, Zn+17, Zn+18, Zn+19, Zn+20, Zn+21, Zn+22, Zn+23, Zn+24, Zn+25, Zn+26, Zn+27, Zn+28, Zn+29, Zn+30" electronScattering="Free" resonantScattering="false"/>
+                        </materialMixFamily>
+                    </SphericalCellMedium>
+                </media>
+
+                <samplingOptions type="SamplingOptions">
+                    <SamplingOptions numDensitySamples="100" numPropertySamples="1" aggregateVelocity="Average"/>
+                </samplingOptions>
+
+                <grid type="SpatialGrid">
+                    <Sphere3DSpatialGrid minRadius="{minRadius}" maxRadius="{maxRadius}">
+                        <meshRadial type="Mesh">
+                            <LogMesh numBins="100" centralBinFraction="1e-3"/>
+                        </meshRadial>
+                        <meshPolar type="Mesh">
+                            <ListMesh points="{polarMeshPoints}"/>
+                        </meshPolar>
+						<meshAzimuthal type="Mesh">
+							<LinMesh numBins="3"/>
+						</meshAzimuthal>
+                    </Sphere3DSpatialGrid>
+                </grid>
+
+            </MediumSystem>
+        </mediumSystem>
+        <instrumentSystem type="InstrumentSystem">
+            <InstrumentSystem>
+
+                <defaultWavelengthGrid type="WavelengthGrid">
+                    <LogWavelengthGrid minWavelength="10 keV" maxWavelength="0.3 keV" numWavelengths="100"/>
+                </defaultWavelengthGrid>
+
+                <instruments type="Instrument">
+
+                    <SEDInstrument instrumentName="i00" distance="1 Mpc" inclination="00 deg" azimuth="0 deg" roll="0 deg" radius="0 pc" recordComponents="true" numScatteringLevels="0" recordPolarization="false" recordStatistics="false"/>
+					<SEDInstrument instrumentName="i90" distance="1 Mpc" inclination="90 deg" azimuth="0 deg" roll="0 deg" radius="0 pc" recordComponents="true" numScatteringLevels="0" recordPolarization="false" recordStatistics="false"/>
+
+                </instruments>
+            </InstrumentSystem>
+        </instrumentSystem>
+        <probeSystem type="ProbeSystem">
+            <ProbeSystem>
+                <probes type="Probe">
+
+                    <ConvergenceInfoProbe probeName="conv" wavelength="7.2 keV" probeAfter="Setup"/>
+
+					<OpacityProbe probeName="opacity" probeAfter="Setup">
+						<wavelengthGrid type="WavelengthGrid">
+							<LogWavelengthGrid minWavelength="10 keV" maxWavelength="0.3 keV" numWavelengths="400"/>
+						</wavelengthGrid>
+						<form type="Form">
+							<!-- <ParallelProjectionForm inclination="90 deg" azimuth="0 deg" roll="0 deg" fieldOfViewX="1e18 cm" numPixelsX="1" fieldOfViewY="1e18 cm" numPixelsY="1"/> -->
+							<PerCellForm/>
+						</form>
+					</OpacityProbe>
+
+					<TemperatureProbe probeName="temperature" probeAfter="Setup">
+						<form type="Form">
+							<PerCellForm/>
+						</form>
+					</TemperatureProbe>
+
+					<SpatialCellPropertiesProbe probeName="prop" wavelength="7.2 keV" probeAfter="Setup">
+
+                </probes>
+            </ProbeSystem>
+        </probeSystem>
+    </MonteCarloSimulation>
+</skirt-simulation-hierarchy>
