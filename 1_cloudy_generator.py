@@ -52,15 +52,15 @@ from pathlib import Path
 
 PARAMETER_SPACE = {
 	# hydrogen ionization parameter (log)
-	"xi": [-1, 0, 1, 2],
+	"xi": [-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5],
 	# hydrogen density, cm^-3 (linear)
-	"hden": [1e4, 1e6],
+	"hden": [1e4, 10**4.5, 1e5, 10**5.5, 1e6],
 	# metallicity relative to GASS10 solar
 	"metallicity": [1.0],
 	# torus half-opening angle from the equatorial plane, degrees
-	"opening_angle": [30],
+	"opening_angle": [30, 60],
 	# SED power-law photon index
-	"photon_index": [1, 2],
+	"photon_index": [1, 1.5, 2, 2.5],
 }
 
 FIXED = {
