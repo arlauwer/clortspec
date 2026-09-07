@@ -111,7 +111,7 @@
 						</form>
 					</TemperatureProbe>
 
-					<SpatialCellPropertiesProbe probeName="prop" wavelength="7.2 keV" probeAfter="Setup">
+					<SpatialCellPropertiesProbe probeName="prop" wavelength="7.2 keV" probeAfter="Setup"/>
 
                 </probes>
             </ProbeSystem>

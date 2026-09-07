@@ -7,5 +7,5 @@ for run in run_*; do
     (
         cd "$run/skirt" || exit 1
         skirt model.ski >/dev/null
-    )
+    ) || echo "FAILED: $run"
 done
