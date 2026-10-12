@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A SKIRT parameter file © Astronomical Observatory, Ghent University -->
+<!-- Neutral torus only (stage 1). Placeholders filled by 3_skirt_generator.py. -->
+<skirt-simulation-hierarchy type="MonteCarloSimulation" format="9" producer="SKIRT v9.0" time="2026-10-09T00:00:00">
+    <MonteCarloSimulation userLevel="Expert" simulationMode="{simulationMode}" iteratePrimaryEmission="false" iterateSecondaryEmission="false" numPackets="{numPackets}">
+        <random type="Random">
+            <Random seed="0"/>
+        </random>
+        <units type="Units">
+            <ExtragalacticUnits wavelengthOutputStyle="Energy" fluxOutputStyle="Energy"/>
+        </units>
+        <cosmology type="Cosmology">
+            <LocalUniverseCosmology/>
+        </cosmology>
+        <sourceSystem type="SourceSystem">
+            <SourceSystem minWavelength="{minWavelength}" maxWavelength="{maxWavelength}">
+                <sources type="Source">
+                    <PointSource positionX="0 pc" positionY="0 pc" positionZ="0 pc" wavelengthBias="0.5">
+                        <sed type="SED">
+                            <FileSED filename="sed.txt"/>
+                        </sed>
+                        <normalization type="LuminosityNormalization">
+                            <IntegratedLuminosityNormalization wavelengthRange="Source" integratedLuminosity="{integratedLuminosity}"/>
+                        </normalization>
+                    </PointSource>
+                </sources>
+            </SourceSystem>
+        </sourceSystem>
+        <mediumSystem type="MediumSystem">
+            <MediumSystem>
+                <photonPacketOptions type="PhotonPacketOptions">
+                    <PhotonPacketOptions explicitAbsorption="false" forceScattering="true" minWeightReduction="1e4" minScattEvents="0" pathLengthBias="0"/>
+                </photonPacketOptions>
+{lyaOptions}                <radiationFieldOptions type="RadiationFieldOptions">
+                    <RadiationFieldOptions storeRadiationField="false"/>
+                </radiationFieldOptions>
+                <media type="Medium">
+                    <GeometricMedium velocityMagnitude="0 km/s" magneticFieldStrength="0 uG">
+                        <geometry type="Geometry">
+                            <TorusGeometry exponent="0" index="0" openingAngle="{torusOpeningAngle}" minRadius="{torusMinRadius}" maxRadius="{torusMaxRadius}" reshapeInnerRadius="false"/>
+                        </geometry>
+                        <materialMix type="MaterialMix">
+                            {torusGasMix}
+                        </materialMix>
+                        <normalization type="MaterialNormalization">
+                            <NumberColumnMaterialNormalization axis="X" numberColumnDensity="{torusAxisColumnDensity}"/>
+                        </normalization>
+                    </GeometricMedium>
+                </media>
+                <samplingOptions type="SamplingOptions">
+                    <SamplingOptions numDensitySamples="100" numPropertySamples="1" aggregateVelocity="Average"/>
+                </samplingOptions>
+                <grid type="SpatialGrid">
+                    <Sphere2DSpatialGrid minRadius="{gridMinRadius}" maxRadius="{gridMaxRadius}">
+                        <meshRadial type="Mesh">
+                            <ListMesh points="{radialMeshPoints}"/>
+                        </meshRadial>
+                        <meshPolar type="Mesh">
+                            <ListMesh points="{polarMeshPoints}"/>
+                        </meshPolar>
+                    </Sphere2DSpatialGrid>
+                </grid>
+            </MediumSystem>
+        </mediumSystem>
+        <instrumentSystem type="InstrumentSystem">
+            <InstrumentSystem>
+                <defaultWavelengthGrid type="WavelengthGrid">
+                    <LogWavelengthGrid minWavelength="{minWavelength}" maxWavelength="{maxWavelength}" numWavelengths="{numWavelengths}"/>
+                </defaultWavelengthGrid>
+                <instruments type="Instrument">
+{instruments}
+                </instruments>
+            </InstrumentSystem>
+        </instrumentSystem>
+        <probeSystem type="ProbeSystem">
+            <ProbeSystem>
+                <probes type="Probe">
+                    <ConvergenceInfoProbe probeName="conv" wavelength="7.2 keV" probeAfter="Setup"/>
+                </probes>
+            </ProbeSystem>
+        </probeSystem>
+    </MonteCarloSimulation>
+</skirt-simulation-hierarchy>

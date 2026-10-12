@@ -1,0 +1,14 @@
+__pycache__/
+tests/
+cloudy_grid/
+torus_grid/
+shell_cloudy/
+combined_grid/
+runs/
+
+*.fits
+*.png
+fit_stage*.xcm
+skirt_run_log.txt
+nohup.out
+*.tar.gz

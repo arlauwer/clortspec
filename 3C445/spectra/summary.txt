@@ -1,0 +1,5 @@
+3C 445 (obsid 0884000101)
+camera exposure(s)  src cts  bkg cts   BACKSCAL s/b  net rate bkg frac
+pn           72199    42140    21478 1.32e+06/3.75e+06    0.4789    0.179
+mos1         95168    13492     6086 2.14e+06/1.81e+07    0.1343    0.052
+mos2         95180    14711     4508 2.15e+06/1.88e+07    0.1493    0.034
