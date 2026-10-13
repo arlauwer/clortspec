@@ -29,9 +29,8 @@ From a downloaded observation to a fit, for a target `X` (every command has
 reduction/xmm_reduce.sh X                 # X/odf/*.tar.gz + X/target.conf -> X/spectra/
 
 # 2. model (details in model/README.md); needs model/targets/X.py
-source reduction/setsas.fish              # HEASoft for pyXspec (fish)
 cd model
-python3 fit.py X                          # stage 1: torus only, no new simulations
+python3 fit.py X                          # stage 1: torus only, no new simulations (sets up HEASoft itself)
 #   -> centre COMBINED_GRID in targets/X.py on the printed result
 ./grid.sh X -j JOBS -t THREADS            # CLOUDY + SKIRT + table (hours-days; server)
 python3 fit.py X                          # stages 1-3 -> runs/X/fit_stage*.png

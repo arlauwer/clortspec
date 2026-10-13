@@ -94,7 +94,8 @@ skirt-gen` here, copy `runs/3C445/combined_grid/`, and `./grid.sh 3C445 --from
 skirt-run` there.
 
 A combined run peaks at ~11–18 GB, so choose JOBS ≈ RAM / 20 GB and
-THREADS ≈ cores / JOBS. `fit.py` (pyXspec) runs on the machine with the spectra.
+THREADS ≈ cores / JOBS. `fit.py` (pyXspec) runs on the machine with the spectra;
+it sets up HEASoft itself (`$HEADAS`, default `../heasoft-6.36/`).
 
 The combined grid runs in SKIRT's `LyaExtinctionOnly` mode so that resonant
 line scattering in the shell is active (`config.RESONANT_SCATTERING`).

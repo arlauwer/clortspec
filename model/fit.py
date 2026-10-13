@@ -30,8 +30,10 @@ the stage-1 result so you can see whether the grid is centred correctly.
 """
 
 import argparse
+from datetime import date
 from pathlib import Path
 import os
+import subprocess
 import sys
 
 _targets = sorted(p.stem for p in (Path(__file__).resolve().parent / "targets").glob("*.py"))
@@ -46,12 +48,32 @@ stages:
 Stages 2-3 need runs/TARGET/combined.fits (./grid.sh TARGET); without it the
 script stops after stage 1 and says so.
 
-output:  runs/TARGET/fit_stage{1,2,3}.png, fit_stage3.xcm; parameters on the terminal
-needs:   HEASoft (pyXspec), e.g. `source ../reduction/setsas.fish`, and the
+output:  runs/TARGET/fit_stage{1,1_full,2,3}.png, fit_stage1.txt, fit_stage3.xcm; parameters on the terminal
+         (fit_stage1_full.png: the stage-1 model over 0.3-10 keV, fitted band in white;
+          fit_stage1.txt: the stage-1 values to centre COMBINED_GRID on)
+needs:   HEASoft (pyXspec; set up automatically from $HEADAS or ../heasoft-6.36) and the
          spectra ../TARGET/spectra/{pn,mos1,mos2}_grp.fits (reduction/xmm_reduce.sh)
 targets: """ + ", ".join(_targets) + "  (targets/<name>.py)")
 _parser.add_argument("target", metavar="TARGET", choices=_targets, help="one of: " + ", ".join(_targets))
 _args = _parser.parse_args()
+
+# HEASoft is set up here when it is not already: pyXspec needs LD_LIBRARY_PATH,
+# which must be there when Python starts, so the environment is taken from
+# headas-init.sh and the script starts again. The location is $HEADAS, default
+# heasoft-6.36/ next to this directory (as in reduction/xmm_reduce.sh).
+try:
+	import xspec
+except ImportError:
+	if os.environ.get("_FIT_HEADAS_DONE"):
+		raise
+	_headas = os.environ.get("HEADAS") or str(Path(__file__).resolve().parents[1] / "heasoft-6.36/x86_64-pc-linux-gnu-libc2.43")
+	if not Path(_headas, "headas-init.sh").is_file():
+		sys.exit(f"error: no HEASoft in {_headas} (set HEADAS)")
+	_env = subprocess.run(["bash", "-c", 'source "$HEADAS/headas-init.sh" >/dev/null 2>&1; env -0'],
+						  env={**os.environ, "HEADAS": _headas}, capture_output=True, check=True).stdout.decode()
+	_env = dict(kv.split("=", 1) for kv in _env.split("\0") if "=" in kv)
+	_env["_FIT_HEADAS_DONE"] = "1"
+	os.execve(sys.executable, [sys.executable] + sys.argv, _env)
 
 # xspec must be imported before matplotlib.pyplot / astropy: the other order
 # segfaults with this HEASoft build.
@@ -68,7 +90,7 @@ COMBINED_TABLE = T.combined_table
 INCLINATION = T.inclination
 SPECTRA = ["pn_grp.fits", "mos1_grp.fits", "mos2_grp.fits"]
 GROUP_LABELS = ["pn", "MOS1", "MOS2"]
-COLORS = ["tab:red", "tab:blue", "tab:green"]
+COLORS = ["black", "tab:blue", "tab:red"]
 
 TORUS_PARS = ["logNH", "OpenAngle"]
 
@@ -138,7 +160,8 @@ def report(title):
 		print(f"     {GROUP_LABELS[g - 1]:>10} constant = {AllModels(g)(1).values[0]:.3f}")
 
 
-def plot(title, filename):
+def plot(title, filename, fitted=None):
+	"""Data, model and residuals over the noticed channels; `fitted` = (lo, hi) keV shades the rest."""
 	Plot.device = "/null"
 	Plot.xAxis = "keV"
 	fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(12, 8),
@@ -156,6 +179,12 @@ def plot(title, filename):
 	ax1.set_xscale("log")
 	ax1.set_yscale("log")
 	ax1.set_ylabel("Counts/s/keV")
+	if fitted:
+		for ax in (ax1, ax2):
+			lo, hi = ax.get_xlim()
+			ax.axvspan(lo, fitted[0], color="0.9", zorder=0)
+			ax.axvspan(fitted[1], hi, color="0.9", zorder=0)
+			ax.set_xlim(lo, hi)
 	ax1.legend()
 	ax2.axhline(0, color="k", lw=0.5)
 	ax2.set_xlabel("Energy (keV)")
@@ -165,6 +194,38 @@ def plot(title, filename):
 	plt.savefig(out, dpi=150)
 	print(f"saved {out}")
 
+def stage1_summary(comp, filename):
+	"""Stage-1 result per COMBINED_GRID axis, next to what targets/<name>.py has now."""
+	axes = {fits_name: axis for axis, fits_name in C.FITS_NAMES.items()}
+	lines = [f"{T.title} stage 1: torus only, 3-{C.FIT_E_MAX_KEV:g} keV, Incl = {INCLINATION:g}   ({date.today()})",
+			 f"C-stat = {Fit.statistic:.1f} for {Fit.dof} d.o.f.",
+			 "cross-normalisation: " + ", ".join(f"{GROUP_LABELS[g - 1]} {AllModels(g)(1).values[0]:.3f}"
+												 for g in range(2, n_groups + 1)),
+			 f"norm = {comp.norm.values[0]:.4g} photons/cm2/s (intrinsic rest-frame 2-10 keV)",
+			 "",
+			 f"{'COMBINED_GRID axis':<21}{'best fit':>9}   {'90% interval':<17}{'torus.fits':<15}targets/{T.name}.py now"]
+	for name in TORUS_PARS + ["PhoIndex"]:
+		par = getattr(comp, name)
+		val, lo, hi = par.values[0], par.values[2], par.values[5]
+		# error = (lower, upper, flags); flags 4 and 5: ran into the lower / upper end of the table
+		err_lo, err_hi, flags = par.error
+		interval = ((f"<{lo:g}" if flags[3] == "T" else f"{err_lo:.4g}" if err_lo else "?") + " - "
+					+ (f">{hi:g}" if flags[4] == "T" else f"{err_hi:.4g}" if err_hi else "?"))
+		now = T.combined_grid[axes[name]]
+		notes = []
+		if min(abs(val - lo), abs(val - hi)) < 1e-6 * max(1.0, abs(val)):
+			notes.append("AT EDGE OF torus.fits")
+		if not min(now) <= val <= max(now):
+			notes.append("fixed at another value" if len(now) == 1 else "OUTSIDE current axis")
+		lines.append(f"{axes[name]:<21}{val:>9.4g}   {interval:<17}{f'{lo:g} - {hi:g}':<15}{now}"
+					 + ("   <-- " + ", ".join(notes) if notes else ""))
+	lines += ["",
+			  f"Centre the three axes of COMBINED_GRID in targets/{T.name}.py on the best fit (a single",
+			  f"value fixes the axis), then run ./grid.sh {T.name}."]
+	out = T.dir / filename
+	out.write_text("\n".join(lines) + "\n")
+	print("\n" + "\n".join(lines) + f"\nsaved {out}")
+
 # --------------------------------------------------------------------------
 # Stage 1: torus only, 3-10 keV
 # --------------------------------------------------------------------------
@@ -172,8 +233,16 @@ def plot(title, filename):
 torus = new_model(TORUS_TABLE)
 notice(3.0)
 Fit.perform()
+# 90% intervals, for choosing how wide the combined grid has to be
+Fit.error("2.706 " + " ".join(str(getattr(torus, name).index) for name in TORUS_PARS + ["PhoIndex"]))
 report("Stage 1: torus, 3-10 keV")
+stage1_summary(torus, "fit_stage1.txt")
 plot(f"{T.title} stage 1: neutral torus (3-10 keV)", "fit_stage1.png")
+# the same model over the whole band, to see what the torus alone leaves below 3 keV
+notice(C.E_MIN_KEV)
+plot(f"{T.title} stage 1: neutral torus, fitted at 3-10 keV (white)", "fit_stage1_full.png",
+	 fitted=(3.0, C.FIT_E_MAX_KEV))
+notice(3.0)
 
 stage1 = {name: getattr(torus, name).values[0] for name in TORUS_PARS + ["PhoIndex", "norm"]}
 cross_norm = [AllModels(g)(1).values[0] for g in range(2, n_groups + 1)]
