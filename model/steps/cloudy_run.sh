@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# 2_cloudy_run.sh
-# ---------------
+# cloudy_run.sh
+# -------------
 # Run `cloudy < sim.in > sim.out` for every run_*/ of a target's shell CLOUDY
-# grid written by 1_cloudy_generator.py, JOBS at a time (each CLOUDY run is
+# grid written by cloudy_generator.py, JOBS at a time (each CLOUDY run is
 # single-threaded, ~100-400 s). The neutral torus needs no CLOUDY.
 #
 # Usage:
-#   ./2_cloudy_run.sh TARGET [-j JOBS] [--force]
+#   steps/cloudy_run.sh TARGET [-j JOBS] [--force]      (or: ./grid.sh TARGET --only cloudy-run)
 #
 #   TARGET     e.g. 3C234 (runs/3C234/shell_cloudy), or a path to a grid directory
 #   -j JOBS    concurrent CLOUDY runs (default: nproc)
@@ -17,7 +17,7 @@
 # the script can be interrupted and restarted. Summary: <grid>/cloudy_run_log.txt
 
 set -u
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1   # model/
 
 JOBS=$(nproc)
 FORCE=0
@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -z "$ROOT" ]] && { sed -n '9,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 [[ -d "runs/$ROOT/shell_cloudy" ]] && ROOT="runs/$ROOT/shell_cloudy"
-[[ -d "$ROOT" ]] || { echo "error: '$ROOT' not found (run 1_cloudy_generator.py TARGET first)" >&2; exit 1; }
+[[ -d "$ROOT" ]] || { echo "error: '$ROOT' not found (run ./grid.sh TARGET --only cloudy-gen first)" >&2; exit 1; }
 ROOT="$(realpath "$ROOT")"
 command -v cloudy >/dev/null 2>&1 || { echo "error: 'cloudy' not on PATH" >&2; exit 1; }
 

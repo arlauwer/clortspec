@@ -1,13 +1,13 @@
 """
-1_cloudy_generator.py
-=====================
-Step 1 of the pipeline: write one CLOUDY input for every distinct shell
+cloudy_generator.py
+===================
+Write one CLOUDY input for every distinct shell
 configuration in the target's COMBINED_GRID, i.e. every combination of the
 axes in config.SHELL_AXES (xi, shell N_H, shell opening angle, Gamma). The
 torus parameters do not enter: the torus is neutral (no CLOUDY) and does not
 shadow the cone walls, so one CLOUDY run is shared by all torus variants.
 
-  python3 1_cloudy_generator.py TARGET
+  python3 steps/cloudy_generator.py TARGET        (or: ./grid.sh TARGET --only cloudy-gen)
 
   runs/TARGET/shell_cloudy/run_NNNNN/{sim.in, sed.in}
   runs/TARGET/shell_cloudy/grid_manifest.csv
@@ -41,9 +41,11 @@ import csv
 import itertools
 import math
 import sys
+from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # config.py is one level up
 import config as C
 
 SIM_IN_TEMPLATE = """\
@@ -73,15 +75,14 @@ save incident continuum "sim.inc" last units keV
 """
 
 
-def write_cloudy_sed(path, photon_index: float, ryd_min: float = 1e-4, ryd_max: float = 1e5,
-					 n_points: int = 400) -> None:
+def cloudy_sed(photon_index: float, ryd_min: float = 1e-4, ryd_max: float = 1e5, n_points: int = 400) -> str:
 	"""CLOUDY `table SED` file: (Ryd, F_nu) pairs, F_nu keyword on the first line."""
 	ryd = np.logspace(math.log10(ryd_min), math.log10(ryd_max), n_points)
 	e_kev = ryd * C.RYD_KEV
 	fnu = C.intrinsic_nufnu(e_kev, photon_index) / e_kev
 	lines = [f"{ryd[0]:.8e} {fnu[0]:.8e} Fnu"]
 	lines += [f"{r:.8e} {f:.8e}" for r, f in zip(ryd[1:], fnu[1:])]
-	path.write_text("\n".join(lines) + "\n")
+	return "\n".join(lines) + "\n"
 
 
 def generate_grid(target: C.Target, output_root=None):
@@ -90,17 +91,16 @@ def generate_grid(target: C.Target, output_root=None):
 	axis_names = C.SHELL_AXES
 	axis_values = [target.combined_grid[name] for name in axis_names]
 
-	manifest_rows = []
+	manifest_rows, n_reset = [], 0
 	for i, combo in enumerate(itertools.product(*axis_values)):
 		params = dict(zip(axis_names, combo))
 		run_name = f"run_{i:05d}"
 		run_dir = output_root / run_name
-		run_dir.mkdir(parents=True, exist_ok=True)
 
 		cf = C.shell_covering_factor(params["shell_opening_angle"])
 		n_in = C.shell_inner_density(params["shell_logNH"])
 
-		(run_dir / "sim.in").write_text(SIM_IN_TEMPLATE.format(
+		sim_in = SIM_IN_TEMPLATE.format(
 			run_name=run_name,
 			covering_factor=cf,
 			log_r_in=math.log10(C.SHELL_R_IN_CM),
@@ -109,8 +109,8 @@ def generate_grid(target: C.Target, output_root=None):
 			log_n_in=math.log10(n_in),
 			density_power=C.SHELL_DENSITY_POWER,
 			abundance_set=C.ABUNDANCE_SET,
-		))
-		write_cloudy_sed(run_dir / "sed.in", params["photon_index"])
+		)
+		n_reset += C.sync_run_dir(run_dir, {"sim.in": sim_in, "sed.in": cloudy_sed(params["photon_index"])})
 
 		manifest_rows.append({
 			"run": run_name, **params,
@@ -128,10 +128,11 @@ def generate_grid(target: C.Target, output_root=None):
 
 	print(f"Wrote {len(manifest_rows)} CLOUDY runs under {output_root}/")
 	print(f"Manifest: {manifest_path}")
+	C.report_sync(output_root, len(manifest_rows), n_reset)
 	return manifest_rows
 
 
 if __name__ == "__main__":
 	if len(sys.argv) != 2:
-		sys.exit(f"usage: python3 1_cloudy_generator.py TARGET   (targets: {', '.join(C.target_names())})")
+		sys.exit(f"usage: python3 steps/cloudy_generator.py TARGET   (targets: {', '.join(C.target_names())})")
 	generate_grid(C.load_target(sys.argv[1]))

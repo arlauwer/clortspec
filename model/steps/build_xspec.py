@@ -1,11 +1,12 @@
 """
-5_build_xspec.py
-================
-Step 5 of the pipeline: assemble OGIP XSPEC additive table models (atable)
+build_xspec.py
+==============
+Assemble OGIP XSPEC additive table models (atable)
 from the SKIRT SEDs of the torus and combined grids.
 
-  python3 5_build_xspec.py torus    -> torus.fits (shared by all targets)
-  python3 5_build_xspec.py TARGET   -> runs/TARGET/combined.fits
+  python3 steps/build_xspec.py torus    -> torus.fits (shared by all targets)
+  python3 steps/build_xspec.py TARGET   -> runs/TARGET/combined.fits
+  (or: ./grid.sh torus|TARGET --only table)
 
 TABLES WRITTEN
 --------------
@@ -56,6 +57,7 @@ from pathlib import Path
 import numpy as np
 from astropy.io import fits
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # config.py is one level up
 import config as C
 
 # --------------------------------------------------------------------------
@@ -213,7 +215,7 @@ def build_table(*, grid_dir: Path, grid: dict, model_name: str, out: Path, flux_
 
 	if missing:
 		runs = sorted(set(missing))
-		raise FileNotFoundError(f"{model_name}: {len(runs)} run(s) without SEDs, e.g. {runs[:5]} -- run 4_skirt_run.sh first")
+		raise FileNotFoundError(f"{model_name}: {len(runs)} run(s) without SEDs, e.g. {runs[:5]} -- run the skirt-run step first")
 
 	primary = fits.PrimaryHDU()
 	primary.header["MODLNAME"] = model_name
@@ -252,4 +254,4 @@ if __name__ == "__main__":
 		build_table(grid_dir=target.combined_dir, grid=target.combined_grid, model_name="combined",
 					out=target.combined_table)
 	else:
-		sys.exit(f"usage: python3 5_build_xspec.py torus|TARGET   (targets: {', '.join(C.target_names())})")
+		sys.exit(f"usage: python3 steps/build_xspec.py torus|TARGET   (targets: {', '.join(C.target_names())})")

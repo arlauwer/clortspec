@@ -1,15 +1,19 @@
 """
-3_skirt_generator.py
-====================
-Step 3 of the pipeline: write the SKIRT models.
+skirt_generator.py
+==================
+Write the SKIRT models.
 
-  python3 3_skirt_generator.py torus    -> torus_grid/ (stage 1, no CLOUDY,
-                                           shared by all targets)
-  python3 3_skirt_generator.py TARGET   -> runs/TARGET/combined_grid/ (torus +
-                                           shell, needs steps 1-2 first)
+  python3 steps/skirt_generator.py torus    -> torus_grid/ (stage 1, no CLOUDY,
+                                               shared by all targets)
+  python3 steps/skirt_generator.py TARGET   -> runs/TARGET/combined_grid/ (torus
+                                               + shell, needs the CLOUDY runs)
+  (or: ./grid.sh torus|TARGET --only skirt-gen)
 
 Each run gets run_NNNNN/{model.ski, sed.txt[, shell.txt]} and the grid
 directory a grid_manifest.csv in itertools.product order of the config grid.
+Regenerating is safe: a run whose inputs are unchanged keeps its results, a
+run whose inputs changed (because the grid was edited) has its old results
+deleted so that the run step redoes it.
 
 TORUS
 -----
@@ -50,6 +54,7 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # config.py is one level up
 import config as C
 
 TORUS_TEMPLATE = C.TEMPLATE_DIR / "torus.ski"
@@ -247,11 +252,10 @@ def generate_torus(output_root: Path = C.TORUS_GRID_DIR):
 	template = TORUS_TEMPLATE.read_text()
 	gas_mix = gas_mix_xml()
 	axis_names = list(C.TORUS_GRID)
-	rows = []
+	rows, n_reset = [], 0
 	for i, combo in enumerate(itertools.product(*C.TORUS_GRID.values())):
 		p = dict(zip(axis_names, combo))
 		run_dir = output_root / f"run_{i:05d}"
-		run_dir.mkdir(parents=True, exist_ok=True)
 		alpha = p["torus_opening_angle"]
 		values = common_values()
 		# no resonant medium here: plain ExtinctionOnly (the torus gas mix still
@@ -264,11 +268,12 @@ def generate_torus(output_root: Path = C.TORUS_GRID_DIR):
 			radialMeshPoints=", ".join(f"{x:.4f}" for x in np.linspace(0, 1, 51)),
 			polarMeshPoints=list_mesh([90 - alpha, 90 + alpha], 0.0, 180.0),
 		)
-		(run_dir / "model.ski").write_text(template.format(**values))
-		C.write_skirt_sed(run_dir / "sed.txt", p["photon_index"])
+		n_reset += C.sync_run_dir(run_dir, {"model.ski": template.format(**values),
+											 "sed.txt": C.skirt_sed(p["photon_index"])})
 		rows.append({"run": run_dir.name, **p})
 	write_manifest(output_root / "grid_manifest.csv", rows)
 	print(f"Wrote {len(rows)} torus runs under {output_root}/ (gas mix: {C.TORUS_GAS_MIX})")
+	C.report_sync(output_root, len(rows), n_reset)
 
 # --------------------------------------------------------------------------
 # Combined grid (stage 2/3)
@@ -279,7 +284,7 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 	cloudy_root = cloudy_root or target.cloudy_dir
 	grid = target.combined_grid
 	if not (cloudy_root / "grid_manifest.csv").exists():
-		sys.exit(f"{cloudy_root}/grid_manifest.csv not found -- run steps 1-2 for {target.name} first")
+		sys.exit(f"{cloudy_root}/grid_manifest.csv not found -- run the CLOUDY steps for {target.name} first (./grid.sh {target.name})")
 	with open(cloudy_root / "grid_manifest.csv", newline="") as f:
 		cloudy_rows = list(csv.DictReader(f))
 	cloudy_index = {tuple(float(r[a]) for a in C.SHELL_AXES): r for r in cloudy_rows}
@@ -292,12 +297,12 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 
 	shell_cache, checks = {}, {}
 	axis_names = list(grid)
-	rows, skipped = [], 0
+	rows, skipped, n_reset = [], 0, 0
 	for i, combo in enumerate(itertools.product(*grid.values())):
 		p = dict(zip(axis_names, combo))
 		key = tuple(float(p[a]) for a in C.SHELL_AXES)
 		if key not in cloudy_index:
-			raise KeyError(f"no CLOUDY run for {dict(zip(C.SHELL_AXES, key))} -- rerun 1_cloudy_generator.py {target.name}")
+			raise KeyError(f"no CLOUDY run for {dict(zip(C.SHELL_AXES, key))} -- rerun ./grid.sh {target.name} --only cloudy-gen")
 		cname = cloudy_index[key]["run"]
 
 		if cname not in shell_cache:
@@ -323,7 +328,6 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 							 f"with alpha = {alpha} deg -- adjust COMBINED_GRID in targets/{target.name}.py")
 
 		run_dir = output_root / f"run_{i:05d}"
-		run_dir.mkdir(parents=True, exist_ok=True)
 		values = common_values()
 		values.update(torus_values(p["torus_logNH"], alpha, gas_mix))
 		values.update(
@@ -332,9 +336,11 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 			radialMeshPoints=radial_mesh,
 			polarMeshPoints=list_mesh([th_in, th_out, 90 - alpha, 90 + alpha, 180 - th_out, 180 - th_in], 0.0, 180.0),
 		)
-		(run_dir / "model.ski").write_text(template.format(**values))
-		(run_dir / "shell.txt").write_text(shell_txt(edges, n_h, temperature, fractions, ion_list, th_in, th_out))
-		C.write_skirt_sed(run_dir / "sed.txt", p["photon_index"])
+		n_reset += C.sync_run_dir(run_dir, {
+			"model.ski": template.format(**values),
+			"shell.txt": shell_txt(edges, n_h, temperature, fractions, ion_list, th_in, th_out),
+			"sed.txt": C.skirt_sed(p["photon_index"]),
+		})
 		rows.append({"run": run_dir.name, **p, "cloudy_run": cname,
 					 "shell_theta_in": th_in, "shell_theta_out": th_out, "shell_clipped": clipped})
 
@@ -353,6 +359,7 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 	n_clipped = sum(r["shell_clipped"] for r in rows)
 	print(f"Wrote {len(rows)} combined runs under {output_root}/ ({n_clipped} with the shell clipped by the torus); "
 		  f"{len(check_rows) - len(bad)}/{len(check_rows)} CLOUDY runs OK, {skipped} combined runs skipped.")
+	C.report_sync(output_root, len(rows) + skipped, n_reset)
 	return 1 if (bad or skipped) else 0
 
 
@@ -363,4 +370,4 @@ if __name__ == "__main__":
 	elif which:
 		sys.exit(generate_combined(C.load_target(which)))
 	else:
-		sys.exit(f"usage: python3 3_skirt_generator.py torus|TARGET   (targets: {', '.join(C.target_names())})")
+		sys.exit(f"usage: python3 steps/skirt_generator.py torus|TARGET   (targets: {', '.join(C.target_names())})")

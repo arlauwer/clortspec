@@ -12,8 +12,8 @@ NH_GALACTIC_1E22 = 0.0570
 
 # Stage 2/3 grid. Axis order = manifest/table row order (last axis fastest),
 # fixed by config.COMBINED_AXES. PROVISIONAL: copied from 3C 234; centre the
-# torus axes and photon_index on the stage-1 fit (python3 6_xspec.py 3C445)
-# before running steps 1-5.
+# torus axes and photon_index on the stage-1 fit (python3 fit.py 3C445)
+# before running ./grid.sh 3C445.
 COMBINED_GRID = {
 	"torus_logNH": [23.25, 23.5],
 	"torus_opening_angle": [45.0],

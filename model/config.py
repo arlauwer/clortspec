@@ -1,7 +1,7 @@
 """
 config.py
 =========
-Single source of truth for the model. Every numbered script imports from
+Single source of truth for the model. Every script imports from
 here, so geometry, energy range and the torus grid stay in sync. Everything
 that belongs to one AGN (redshift, Galactic N_H, the combined grid) lives in
 targets/<name>.py and is read with load_target().
@@ -298,14 +298,43 @@ def intrinsic_nufnu(e_kev, photon_index: float):
 	return nufnu
 
 
-def write_skirt_sed(path: Path, photon_index: float, e_lo_kev: float = 0.1, e_hi_kev: float = 100.0,
-					n_points: int = 2000) -> None:
+def skirt_sed(photon_index: float, e_lo_kev: float = 0.1, e_hi_kev: float = 100.0, n_points: int = 2000) -> str:
 	"""SKIRT FileSED with the intrinsic spectrum (same shape CLOUDY gets)."""
 	e = np.logspace(math.log10(e_lo_kev), math.log10(e_hi_kev), n_points)
 	nufnu = intrinsic_nufnu(e, photon_index)
 	lines = ["# Column 1: Wavelength (keV)", "# Column 2: neutralfluxdensity (erg/s/cm2)"]
 	lines += [f"{a:.10e} {b:.10e}" for a, b in zip(e, nufnu)]
-	Path(path).write_text("\n".join(lines) + "\n")
+	return "\n".join(lines) + "\n"
+
+
+def sync_run_dir(run_dir: Path, inputs: dict) -> bool:
+	"""Write the input files {name: text} of one grid run.
+
+	If the directory already holds exactly these inputs it is left alone, so
+	its results stay valid. If an input changed (the grid was edited and this
+	run number now means other parameters), everything else in the directory
+	-- the results of the old inputs -- is deleted, so the run is redone.
+	Returns True if old results were deleted."""
+	run_dir.mkdir(parents=True, exist_ok=True)
+	same = all((run_dir / name).exists() and (run_dir / name).read_text() == text for name, text in inputs.items())
+	if same:
+		return False
+	stale = [f for f in run_dir.iterdir() if f.is_file() and f.name not in inputs]
+	for f in stale:
+		f.unlink()
+	for name, text in inputs.items():
+		(run_dir / name).write_text(text)
+	return bool(stale)
+
+
+def report_sync(root: Path, n_runs: int, n_reset: int) -> None:
+	"""Tell the user about results invalidated by a grid change."""
+	if n_reset:
+		print(f"  {n_reset} run(s) had results for other parameters (the grid changed): results deleted, will be redone")
+	extra = sorted(d.name for d in root.glob("run_*") if d.is_dir() and int(d.name[4:]) >= n_runs)
+	if extra:
+		print(f"  WARNING: {len(extra)} run directories ({extra[0]} .. {extra[-1]}) are no longer part of the grid; "
+			  f"delete them, or the run step will still simulate them")
 
 
 def read_cloudy_abundances(path: Path = CLOUDY_ABUNDANCE_FILE):

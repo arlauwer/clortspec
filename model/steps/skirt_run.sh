@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# 4_skirt_run.sh
-# --------------
+# skirt_run.sh
+# ------------
 # Run SKIRT for every run_*/model.ski of a grid, JOBS simulations at a time.
 #
 # Usage:
-#   ./4_skirt_run.sh GRID [-j JOBS] [-t THREADS] [--force] [--dry-run]
+#   steps/skirt_run.sh GRID [-j JOBS] [-t THREADS] [--force] [--dry-run]
 #
 #   GRID        torus (shared stage-1 grid) | TARGET, e.g. 3C234 (its combined
 #               grid, runs/3C234/combined_grid) | <path to a grid directory>
@@ -19,10 +19,10 @@
 # SKIRT output goes to run_*/skirt_stdout.txt, a summary to
 # <grid>/skirt_run_log.txt. On a server, e.g.:
 #
-#   nohup ./4_skirt_run.sh 3C234 -j 8 -t 8 > 3C234.out 2>&1 &
+#   nohup steps/skirt_run.sh 3C234 -j 8 -t 8 > 3C234.out 2>&1 &
 
 set -u
-cd "$(dirname "$0")" || exit 1
+cd "$(dirname "$0")/.." || exit 1   # model/
 
 usage() { sed -n '7,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
@@ -51,7 +51,7 @@ elif [[ -d "runs/$GRID/combined_grid" ]]; then
 else
     ROOT="$GRID"
 fi
-[[ -d "$ROOT" ]] || { echo "error: '$ROOT' not found (run 3_skirt_generator.py first)" >&2; exit 1; }
+[[ -d "$ROOT" ]] || { echo "error: '$ROOT' not found (run ./grid.sh ... --only skirt-gen first)" >&2; exit 1; }
 ROOT="$(realpath "$ROOT")"
 
 [[ -z "$THREADS" ]] && THREADS=$(( $(nproc) / JOBS ))

@@ -1,9 +1,10 @@
 """
-6_xspec.py
-==========
-Step 6: staged fit of the XMM spectra of one target (pn, MOS1, MOS2).
+fit.py
+======
+Staged fit of the XMM spectra of one target (pn, MOS1, MOS2).
 
-  python3 6_xspec.py TARGET          plots and fit_stage3.xcm -> runs/TARGET/
+  python3 fit.py TARGET          plots and fit_stage3.xcm -> runs/TARGET/
+  python3 fit.py --help
 
   stage 1:  constant * TBabs * atable{torus.fits}      3-10 keV observed
   stage 2:  constant * TBabs * atable{combined.fits}   0.3-10 keV,
@@ -28,9 +29,29 @@ target's COMBINED_GRID) are not in combined.fits; the script prints them next to
 the stage-1 result so you can see whether the grid is centred correctly.
 """
 
+import argparse
 from pathlib import Path
 import os
 import sys
+
+_targets = sorted(p.stem for p in (Path(__file__).resolve().parent / "targets").glob("*.py"))
+_parser = argparse.ArgumentParser(
+	description="Staged XSPEC fit of a target's XMM spectra (pn, MOS1, MOS2) with the SKIRT tables.",
+	formatter_class=argparse.RawDescriptionHelpFormatter,
+	epilog="""\
+stages:
+  1  torus.fits, 3-10 keV. Always runs; needs no target-specific simulations.
+  2  runs/TARGET/combined.fits, 0.3-10 keV, torus and source frozen at stage 1
+  3  as stage 2 with everything free -- the result to quote
+Stages 2-3 need runs/TARGET/combined.fits (./grid.sh TARGET); without it the
+script stops after stage 1 and says so.
+
+output:  runs/TARGET/fit_stage{1,2,3}.png, fit_stage3.xcm; parameters on the terminal
+needs:   HEASoft (pyXspec), e.g. `source ../reduction/setsas.fish`, and the
+         spectra ../TARGET/spectra/{pn,mos1,mos2}_grp.fits (reduction/xmm_reduce.sh)
+targets: """ + ", ".join(_targets) + "  (targets/<name>.py)")
+_parser.add_argument("target", metavar="TARGET", choices=_targets, help="one of: " + ", ".join(_targets))
+_args = _parser.parse_args()
 
 # xspec must be imported before matplotlib.pyplot / astropy: the other order
 # segfaults with this HEASoft build.
@@ -40,9 +61,7 @@ import matplotlib.pyplot as plt
 
 import config as C
 
-if len(sys.argv) != 2:
-	sys.exit(f"usage: python3 6_xspec.py TARGET   (targets: {', '.join(C.target_names())})")
-T = C.load_target(sys.argv[1])
+T = C.load_target(_args.target)
 
 TORUS_TABLE = C.TORUS_TABLE
 COMBINED_TABLE = T.combined_table
@@ -62,6 +81,9 @@ plt.rcParams.update({"font.size": 14})
 missing = [s for s in SPECTRA if not Path(s).exists()]
 if missing:
 	sys.exit(f"missing {missing} in {T.spectra_dir}: run reduction/xmm_reduce.sh {T.name} first")
+
+if not C.TORUS_TABLE.exists():
+	sys.exit(f"{C.TORUS_TABLE} not found: build the shared torus table with ./grid.sh torus")
 
 AllData.clear()
 AllData(" ".join(f"{i}:{i} {s}" for i, s in enumerate(SPECTRA, start=1)))
@@ -158,7 +180,7 @@ cross_norm = [AllModels(g)(1).values[0] for g in range(2, n_groups + 1)]
 
 if not COMBINED_TABLE.exists():
 	sys.exit(f"\n{COMBINED_TABLE} not built yet. Centre COMBINED_GRID's torus axes in targets/{T.name}.py "
-			 f"on the stage-1 result above, then run steps 1-5 for {T.name}.")
+			 f"on the stage-1 result above, then run ./grid.sh {T.name}.")
 
 # --------------------------------------------------------------------------
 # Stage 2: torus + shell, 0.3-10 keV, torus / source frozen at stage 1

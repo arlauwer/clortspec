@@ -8,6 +8,9 @@ in `targets/<name>.py`.
 
 ```
 model/
+├── grid.sh              build a grid + XSPEC table      } the two commands
+├── fit.py               fit a target with the tables    } you run
+├── steps/               the individual steps grid.sh calls
 ├── config.py            the model, shared by all targets
 ├── targets/3C234.py     redshift, Galactic N_H, combined grid of one target
 ├── torus_grid/          stage-1 SKIRT grid   } shared: the tables are in the
@@ -21,28 +24,43 @@ model/
 
 Spectra come from `../reduction/xmm_reduce.sh <target>` (→ `../<target>/spectra/`).
 
-## Steps
+## Running it
 
-Once, for all targets (already done; redo only if `config.py` changes):
+```bash
+./grid.sh torus -j JOBS -t THREADS     # once for all targets (already done) -> torus.fits
+python3 fit.py 3C445                   # stage 1 (3–10 keV); stops there until combined.fits exists
+# edit targets/3C445.py: centre the torus axes (and Γ) of COMBINED_GRID on the stage-1 result
+./grid.sh 3C445 -j JOBS -t THREADS     # CLOUDY + SKIRT + table -> runs/3C445/combined.fits
+python3 fit.py 3C445                   # stages 1–3 -> runs/3C445/fit_stage*.png, fit_stage3.xcm
+```
 
-| step | command | what |
+Both have `--help`. `grid.sh` runs these steps in order; `--from`, `--to` and `--only` select a
+part, and the two run steps skip what is already finished, so an interrupted
+grid is continued by calling it again.
+
+| step | script | what |
 |---|---|---|
-| 3 | `python3 3_skirt_generator.py torus` | torus-only SKIRT models → `torus_grid/` |
-| 4 | `./4_skirt_run.sh torus -j JOBS -t THREADS` | run them (resumable) |
-| 5 | `python3 5_build_xspec.py torus` | → `torus.fits` |
+| `cloudy-gen` | `steps/cloudy_generator.py TARGET` | CLOUDY inputs for every shell configuration → `runs/TARGET/shell_cloudy/` (not for `torus`) |
+| `cloudy-run` | `steps/cloudy_run.sh TARGET -j JOBS` | run CLOUDY, ≈100–400 s per run (not for `torus`) |
+| `skirt-gen` | `steps/skirt_generator.py torus\|TARGET` | SKIRT models → `torus_grid/` or `runs/TARGET/combined_grid/`; validates CLOUDY (`shell_cloudy/cloudy_check.csv`) |
+| `skirt-run` | `steps/skirt_run.sh torus\|TARGET -j JOBS -t THREADS` | run SKIRT (`--dry-run` lists what is left, `--force` reruns finished models) |
+| `table` | `steps/build_xspec.py torus\|TARGET` | → `torus.fits` or `runs/TARGET/combined.fits` |
 
-Per target (here `3C445`):
+## The two grids
 
-| step | command | what |
-|---|---|---|
-| 6 | `python3 6_xspec.py 3C445` | stage 1 fit (3–10 keV); stops if `runs/3C445/combined.fits` does not exist yet |
-| — | edit `targets/3C445.py` | centre the torus axes (and Γ) of `COMBINED_GRID` on the stage-1 result |
-| 1 | `python3 1_cloudy_generator.py 3C445` | CLOUDY inputs for every shell configuration → `runs/3C445/shell_cloudy/` |
-| 2 | `./2_cloudy_run.sh 3C445 -j JOBS` | run CLOUDY (≈100–400 s per run, resumable) |
-| 3 | `python3 3_skirt_generator.py 3C445` | torus + shell SKIRT models → `runs/3C445/combined_grid/`; validates CLOUDY (`shell_cloudy/cloudy_check.csv`) |
-| 4 | `./4_skirt_run.sh 3C445 -j JOBS -t THREADS` | run them (`--dry-run` lists what is left, `--force` reruns finished models) |
-| 5 | `python3 5_build_xspec.py 3C445` | → `runs/3C445/combined.fits` |
-| 6 | `python3 6_xspec.py 3C445` | stages 1–3 → `runs/3C445/fit_stage*.png`, `fit_stage3.xcm` |
+- **`torus`**: `TORUS_GRID` in `config.py`, built with `./grid.sh torus` into
+  `torus_grid/` and `torus.fits`. It is shared by all targets, because the
+  tables are in rest-frame energies and the redshift is a fit parameter.
+  `fit.py` uses it for stage 1. Build it once (or copy `torus.fits` from where
+  it was built; `.fits` files are not in git) and rebuild only after changing
+  `config.py`, e.g. when a target's stage-1 fit runs into the edge of the grid.
+- **a target**: `COMBINED_GRID` in `targets/<name>.py`, built with
+  `./grid.sh <name>` into `runs/<name>/`.
+
+After editing a grid, run `grid.sh` again. Runs whose parameters are unchanged
+keep their results; the others are reset and redone. Inserting a value into an
+axis renumbers the runs, so then most of them are redone. If the grid became
+smaller, the generator lists the `run_*` directories to delete.
 
 ## Adding a target
 
@@ -50,15 +68,16 @@ Per target (here `3C445`):
    holds `{pn,mos1,mos2}_grp.fits`.
 2. Copy `targets/3C234.py` to `targets/<name>.py`; set `TITLE`, `REDSHIFT` and
    `NH_GALACTIC_1E22` (https://www.swift.ac.uk/analysis/nhtot/).
-3. `python3 6_xspec.py <name>` for stage 1, which needs no new simulations.
-4. Centre `COMBINED_GRID` on that result and run steps 1–6.
+3. `python3 fit.py <name>` for stage 1, which needs no new simulations.
+4. Centre `COMBINED_GRID` on that result, then `./grid.sh <name>` and
+   `python3 fit.py <name>` again.
 
 Optional entries in a target file: `INCLINATION` (default 90) and
 `SPECTRA_DIR` (default `../<name>/spectra`).
 
 ## Running on a server
 
-Steps 1–5 need only `skirt` and `cloudy` on PATH and Python with numpy and
+`grid.sh` needs only `skirt` and `cloudy` on PATH and Python with numpy and
 astropy; no HEASoft or SAS. CLOUDY's abundance file is found via
 `$CLOUDY_DATA_PATH` or the `data/` directory above the `cloudy` executable.
 All paths inside the grids are relative, so the directory can be copied as is:
@@ -66,14 +85,16 @@ All paths inside the grids are relative, so the directory can be copied as is:
 ```bash
 rsync -av --exclude 'runs/*/*.tar.gz' --exclude __pycache__ model/ server:model/
 # on the server
-python3 1_cloudy_generator.py 3C445 && ./2_cloudy_run.sh 3C445 -j $(nproc)
-python3 3_skirt_generator.py 3C445
-nohup ./4_skirt_run.sh 3C445 -j JOBS -t THREADS > 3C445.out 2>&1 &
-python3 5_build_xspec.py 3C445          # -> runs/3C445/combined.fits, copy back
+nohup ./grid.sh 3C445 -j JOBS -t THREADS > 3C445.out 2>&1 &
+# -> runs/3C445/combined.fits, copy back
 ```
 
+To run CLOUDY locally and only SKIRT on the server: `./grid.sh 3C445 --to
+skirt-gen` here, copy `runs/3C445/combined_grid/`, and `./grid.sh 3C445 --from
+skirt-run` there.
+
 A combined run peaks at ~11–18 GB, so choose JOBS ≈ RAM / 20 GB and
-THREADS ≈ cores / JOBS. Step 6 (pyXspec) runs on the machine with the spectra.
+THREADS ≈ cores / JOBS. `fit.py` (pyXspec) runs on the machine with the spectra.
 
 The combined grid runs in SKIRT's `LyaExtinctionOnly` mode so that resonant
 line scattering in the shell is active (`config.RESONANT_SCATTERING`).
@@ -86,5 +107,5 @@ spectrum normalised to an intrinsic rest-frame 2–10 keV photon flux of
 inclination (`config.INCLINATIONS`) is the last table parameter; a grid axis
 with a single value is fixed and left out of the table.
 
-`templates/` holds the two SKIRT templates. `scripts/` contains older helpers
-written for the first version of the pipeline.
+`templates/` holds the two SKIRT templates. `scripts/` contains an older
+plotting helper written for the first version of the pipeline.

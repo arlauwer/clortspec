@@ -9,6 +9,7 @@ observations/
 ├── docs/                 xmm_spectral_guide.pdf, notes, Bert's heasp table script
 ├── sas/, heasoft-6.36/   software
 ├── model/                CLOUDY + SKIRT + XSPEC pipeline for all targets (see model/README.md)
+│   ├── grid.sh, fit.py   build the model grids / fit a target
 │   ├── targets/3C234.py  redshift, Galactic N_H, model grid of one target
 │   └── runs/3C234/       its CLOUDY/SKIRT grids, XSPEC table and fit plots
 └── 3C234/, 3C445/        one directory per target
@@ -16,6 +17,24 @@ observations/
     ├── odf/              raw data: the downloaded <obsid>.tar.gz (+ unpacked ODF)
     ├── reduction/        SAS working dir (events, GTIs, images, logs/, *.png)
     └── spectra/          {pn,mos1,mos2}_grp.fits (+ src/bkg/rmf/arf) -- what XSPEC loads
+```
+
+## Quick reference
+
+From a downloaded observation to a fit, for a target `X` (every command has
+`--help`):
+
+```bash
+# 1. reduction (details below; first time: see "Adding a target")
+reduction/xmm_reduce.sh X                 # X/odf/*.tar.gz + X/target.conf -> X/spectra/
+
+# 2. model (details in model/README.md); needs model/targets/X.py
+source reduction/setsas.fish              # HEASoft for pyXspec (fish)
+cd model
+python3 fit.py X                          # stage 1: torus only, no new simulations
+#   -> centre COMBINED_GRID in targets/X.py on the printed result
+./grid.sh X -j JOBS -t THREADS            # CLOUDY + SKIRT + table (hours-days; server)
+python3 fit.py X                          # stages 1-3 -> runs/X/fit_stage*.png
 ```
 
 ## Reducing a target
