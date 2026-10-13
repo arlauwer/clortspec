@@ -165,7 +165,7 @@ TORUS_GRID = {
 	"torus_logNH": [21.5, 21.75, 22.0, 22.25, 22.5, 22.75, 23.0, 23.25, 23.5, 23.75, 24.0, 24.25, 24.5],
 	# wedge half-opening angle from the EQUATOR (deg)
 	"torus_opening_angle": [30.0, 45.0, 60.0],
-	"photon_index": [1.2, 1.5, 1.8, 2.1, 2.4, 2.7],
+	"photon_index": [1.0, 1.2, 1.5, 1.8, 2.1, 2.4, 2.7],
 }
 
 # Stage 2/3: torus + shell, one grid per target (COMBINED_GRID in
