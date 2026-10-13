@@ -15,8 +15,8 @@ NH_GALACTIC_1E22 = 0.0570
 # torus axes and photon_index on the stage-1 fit (python3 fit.py 3C445)
 # before running ./grid.sh 3C445.
 COMBINED_GRID = {
-	"torus_logNH": [23.25, 23.5],
-	"torus_opening_angle": [45.0],
+	"torus_logNH": [23.34],
+	"torus_opening_angle": [30.0, 45.0],
 	# log10 xi = L(1-1000 Ryd) / (n_in R_in^2), erg cm s^-1, at the inner face
 	"logxi": [-1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0],
 	# log10 radial column density of the shell, R_in -> R_out, cm^-2
@@ -24,5 +24,5 @@ COMBINED_GRID = {
 	# cone half-opening angle from the POLE, centre of the wall (deg). Must stay
 	# clear of the torus: theta_s + wall/2 <= 90 - alpha (else clipped).
 	"shell_opening_angle": [20.0, 30.0, 40.0],
-	"photon_index": [1.2, 1.45, 1.7],
+	"photon_index": [1.288, 1.355, 1.407],
 }
