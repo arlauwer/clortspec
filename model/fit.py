@@ -19,10 +19,9 @@ Staged fit of the XMM spectra of one target (pn, MOS1, MOS2).
             stage-1 values carry over directly.
 - Incl:     frozen at the target's INCLINATION (default 90) in stages 1-2. Every line of sight through
             the uniform torus wedge sees the same N_H, so above 3 keV the
-            inclination is unconstrained. Free in stage 3 (where it sets how much
-            of the shell the torus hides), with a hard lower limit at the first
-            grid inclination strictly inside the torus (> 90 - alpha), so the fit
-            cannot jump to unobscured (type-1) views.
+            inclination is unconstrained. Free in stage 3, over the table
+            inclinations strictly inside the narrowest torus (> 90 - alpha), so
+            the fit never uses or interpolates towards unobscured (type-1) views.
 
 Parameters that are fixed in the combined grid (single-valued axes in the
 target's COMBINED_GRID) are not in combined.fits; the script prints them next to
@@ -36,7 +35,9 @@ import os
 import subprocess
 import sys
 
-_targets = sorted(p.stem for p in (Path(__file__).resolve().parent / "targets").glob("*.py"))
+# config/<name>.py (not config/model.py); config is not imported yet, it must come after xspec
+_targets = sorted(p.stem for p in (Path(__file__).resolve().parent / "config").glob("*.py")
+				  if p.stem not in ("__init__", "model"))
 _parser = argparse.ArgumentParser(
 	description="Staged XSPEC fit of a target's XMM spectra (pn, MOS1, MOS2) with the SKIRT tables.",
 	formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -48,12 +49,13 @@ stages:
 Stages 2-3 need runs/TARGET/combined.fits (./grid.sh TARGET); without it the
 script stops after stage 1 and says so.
 
-output:  runs/TARGET/fit_stage{1,1_full,2,3}.png, fit_stage1.txt, fit_stage3.xcm; parameters on the terminal
+output:  runs/TARGET/fit_stage{1,1_full,2,3}.png, fit_stage{1,2,3}.txt, fit_stage3.xcm; parameters on the terminal
          (fit_stage1_full.png: the stage-1 model over 0.3-10 keV, fitted band in white;
-          fit_stage1.txt: the stage-1 values to centre COMBINED_GRID on)
+          fit_stage1.txt: the stage-1 values to centre COMBINED_GRID on;
+          fit_stage{2,3}.txt: every parameter with its 90% interval and range, limits flagged)
 needs:   HEASoft (pyXspec; set up automatically from $HEADAS or ../heasoft-6.36) and the
          spectra ../TARGET/spectra/{pn,mos1,mos2}_grp.fits (reduction/xmm_reduce.sh)
-targets: """ + ", ".join(_targets) + "  (targets/<name>.py)")
+targets: """ + ", ".join(_targets) + "  (config/<name>.py)")
 _parser.add_argument("target", metavar="TARGET", choices=_targets, help="one of: " + ", ".join(_targets))
 _args = _parser.parse_args()
 
@@ -194,8 +196,62 @@ def plot(title, filename, fitted=None):
 	plt.savefig(out, dpi=150)
 	print(f"saved {out}")
 
+PAR_DESCRIPTIONS = {
+	"logNH": "torus: log equatorial N_H (cm^-2)",
+	"OpenAngle": "torus: half-opening angle from the equator (deg)",
+	"logxi": "shell: log ionisation parameter at inner face (erg cm/s)",
+	"logNHs": "shell: log radial N_H (cm^-2)",
+	"OpenAngS": "shell: cone angle from the pole (deg)",
+	"PhoIndex": "source: photon index",
+	"Incl": "observer inclination from the pole (deg)",
+	"z": "redshift",
+	"norm": "intrinsic rest-frame 2-10 keV photon flux (ph/cm2/s)",
+}
+
+
+def fit_summary(comp, title, filename, fixed_axes=None):
+	"""Readable overview of a fit: every table parameter with its 90% interval
+	and allowed range, parameters at a limit flagged; written to runs/TARGET/filename."""
+	free = [getattr(comp, n) for n in comp.parameterNames if not getattr(comp, n).frozen]
+	if free:
+		Fit.error("2.706 " + " ".join(str(p.index) for p in free))
+	lines = [f"{T.title} {title}   ({date.today()})",
+			 f"C-stat = {Fit.statistic:.1f} for {Fit.dof} d.o.f. (ratio {Fit.statistic / Fit.dof:.3f})",
+			 "cross-normalisation (pn = 1): " + ", ".join(f"{GROUP_LABELS[g - 1]} {AllModels(g)(1).values[0]:.3f}"
+														 for g in range(2, n_groups + 1)),
+			 "",
+			 f"{'parameter':<10}{'value':>10}   {'90% interval':<19}{'allowed range':<17}{'':<8}meaning"]
+	for name in comp.parameterNames:
+		p = getattr(comp, name)
+		val, lo, hi = p.values[0], p.values[2], p.values[5]
+		if p.frozen:
+			state, interval = "frozen", ""
+		else:
+			state = "free"
+			interval = interval_90(p)
+		at_edge = not p.frozen and min(abs(val - lo), abs(val - hi)) < 1e-6 * max(1.0, abs(val))
+		rng = "" if name in ("z", "norm") else f"{lo:g} - {hi:g}"
+		lines.append(f"{name:<10}{val:>10.4g}   {interval:<19}{rng:<17}{state:<8}{PAR_DESCRIPTIONS.get(name, '')}"
+					 + ("   <-- AT LIMIT" if at_edge else ""))
+	if fixed_axes:
+		lines += ["", "fixed in the combined grid (single-valued axis, not in the table):"]
+		lines += [f"{name:<10}{value:>10.4g}   {PAR_DESCRIPTIONS.get(name, '')}" for name, value in fixed_axes.items()]
+	out = T.dir / filename
+	out.write_text("\n".join(lines) + "\n")
+	print("\n" + "\n".join(lines) + f"\nsaved {out}")
+
+
+def interval_90(par):
+	"""90% interval from the last Fit.error; '<lo' / '>hi' where it runs into the limit."""
+	lo, hi = par.values[2], par.values[5]
+	# error = (lower, upper, flags); flags 4 and 5: ran into the lower / upper limit
+	err_lo, err_hi, flags = par.error
+	return ((f"<{lo:g}" if flags[3] == "T" else f"{err_lo:.4g}" if err_lo else "?") + " - "
+			+ (f">{hi:g}" if flags[4] == "T" else f"{err_hi:.4g}" if err_hi else "?"))
+
+
 def stage1_summary(comp, filename):
-	"""Stage-1 result per COMBINED_GRID axis, next to what targets/<name>.py has now."""
+	"""Stage-1 result per COMBINED_GRID axis, next to what config/<name>.py has now."""
 	axes = {fits_name: axis for axis, fits_name in C.FITS_NAMES.items()}
 	lines = [f"{T.title} stage 1: torus only, 3-{C.FIT_E_MAX_KEV:g} keV, Incl = {INCLINATION:g}   ({date.today()})",
 			 f"C-stat = {Fit.statistic:.1f} for {Fit.dof} d.o.f.",
@@ -203,14 +259,11 @@ def stage1_summary(comp, filename):
 												 for g in range(2, n_groups + 1)),
 			 f"norm = {comp.norm.values[0]:.4g} photons/cm2/s (intrinsic rest-frame 2-10 keV)",
 			 "",
-			 f"{'COMBINED_GRID axis':<21}{'best fit':>9}   {'90% interval':<17}{'torus.fits':<15}targets/{T.name}.py now"]
+			 f"{'COMBINED_GRID axis':<21}{'best fit':>9}   {'90% interval':<17}{'torus.fits':<15}config/{T.name}.py now"]
 	for name in TORUS_PARS + ["PhoIndex"]:
 		par = getattr(comp, name)
 		val, lo, hi = par.values[0], par.values[2], par.values[5]
-		# error = (lower, upper, flags); flags 4 and 5: ran into the lower / upper end of the table
-		err_lo, err_hi, flags = par.error
-		interval = ((f"<{lo:g}" if flags[3] == "T" else f"{err_lo:.4g}" if err_lo else "?") + " - "
-					+ (f">{hi:g}" if flags[4] == "T" else f"{err_hi:.4g}" if err_hi else "?"))
+		interval = interval_90(par)
 		now = T.combined_grid[axes[name]]
 		notes = []
 		if min(abs(val - lo), abs(val - hi)) < 1e-6 * max(1.0, abs(val)):
@@ -220,7 +273,7 @@ def stage1_summary(comp, filename):
 		lines.append(f"{axes[name]:<21}{val:>9.4g}   {interval:<17}{f'{lo:g} - {hi:g}':<15}{now}"
 					 + ("   <-- " + ", ".join(notes) if notes else ""))
 	lines += ["",
-			  f"Centre the three axes of COMBINED_GRID in targets/{T.name}.py on the best fit (a single",
+			  f"Centre the three axes of COMBINED_GRID in config/{T.name}.py on the best fit (a single",
 			  f"value fixes the axis), then run ./grid.sh {T.name}."]
 	out = T.dir / filename
 	out.write_text("\n".join(lines) + "\n")
@@ -248,7 +301,7 @@ stage1 = {name: getattr(torus, name).values[0] for name in TORUS_PARS + ["PhoInd
 cross_norm = [AllModels(g)(1).values[0] for g in range(2, n_groups + 1)]
 
 if not COMBINED_TABLE.exists():
-	sys.exit(f"\n{COMBINED_TABLE} not built yet. Centre COMBINED_GRID's torus axes in targets/{T.name}.py "
+	sys.exit(f"\n{COMBINED_TABLE} not built yet. Centre COMBINED_GRID's torus axes in config/{T.name}.py "
 			 f"on the stage-1 result above, then run ./grid.sh {T.name}.")
 
 # --------------------------------------------------------------------------
@@ -280,6 +333,7 @@ for name, value in stage1.items():
 notice(0.3)
 Fit.perform()
 report("Stage 2: torus + shell, 0.3-10 keV, torus and source frozen")
+fit_summary(comb, "stage 2: torus (frozen) + shell, 0.3-10 keV", "fit_stage2.txt", fixed_axes)
 plot(f"{T.title} stage 2: torus (frozen) + ionised shell", "fit_stage2.png")
 
 # --------------------------------------------------------------------------
@@ -290,17 +344,20 @@ for name in stage1:
 	if name in comb.parameterNames:
 		getattr(comb, name).frozen = False
 
-# torus edge: 90 - alpha for the widest torus the table allows
-if "OpenAngle" in comb.parameterNames:
-	alpha_max = comb.OpenAngle.values[5]
-else:
-	alpha_max = fixed_axes["OpenAngle"]
-incl_min = min(i for i in C.INCLINATIONS if i > 90 - alpha_max)
-comb.Incl.values = [INCLINATION, 1.0, incl_min, incl_min, 90.0, 90.0]
+# Incl only over table inclinations strictly inside the NARROWEST torus of the
+# table, so XSPEC never interpolates between an obscured and an unobscured view.
+# New tables record only such inclinations (config.combined_inclinations);
+# older ones also have type-1 views, which this excludes.
+alpha_min = comb.OpenAngle.values[2] if "OpenAngle" in comb.parameterNames else fixed_axes["OpenAngle"]
+table_incls = [float(v) for v in fits.getdata(COMBINED_TABLE, "PARAMETERS")[-1]["VALUE"]]
+incl_min = min(i for i in table_incls if i > 90 - alpha_min)
+comb.Incl.values = [max(INCLINATION, incl_min), 1.0, incl_min, incl_min, 90.0, 90.0]
 comb.Incl.frozen = False
-print(f"note: Incl free in stage 3, limited to [{incl_min:g}, 90] (torus edge at {90 - alpha_max:g} deg)")
+print(f"note: Incl free in stage 3, limited to [{incl_min:g}, 90] (narrowest torus edge at {90 - alpha_min:g} deg)")
 Fit.perform()
 report("Stage 3: all free, 0.3-10 keV")
+fit_summary(comb, f"stage 3: torus + shell, all free, 0.3-10 keV (Incl >= {incl_min:g})", "fit_stage3.txt",
+			fixed_axes)
 plot(f"{T.title} stage 3: torus + ionised shell, all free", "fit_stage3.png")
 
 xcm = T.dir / "fit_stage3.xcm"

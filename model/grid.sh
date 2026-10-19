@@ -32,7 +32,7 @@
 #   torus    TORUS_GRID in config.py. One table for ALL targets (rest-frame
 #            energies, redshift is a fit parameter); fit.py uses it for stage 1.
 #            Build it once; rebuild only after changing config.py.
-#   TARGET   COMBINED_GRID in targets/TARGET.py, centred on that target's
+#   TARGET   COMBINED_GRID in config/TARGET.py, centred on that target's
 #            stage-1 result.
 #
 # After editing a grid, just run this script again: runs whose parameters are
@@ -46,12 +46,12 @@
 #   ./grid.sh 3C234 --to skirt-gen            CLOUDY here ...
 #   nohup ./grid.sh 3C234 --from skirt-run -j 8 -t 8 > 3C234.out 2>&1 &    ... SKIRT on a server
 #
-# A SKIRT run of the combined grid peaks at 11-18 GB: JOBS ~ RAM / 20 GB,
+# A SKIRT run of the combined grid peaks at 11-60 GB: JOBS ~ RAM / 60 GB,
 # THREADS ~ cores / JOBS.
 #
 # The whole procedure for a target:
 #   python3 fit.py TARGET        stage 1, needs only torus.fits
-#   edit targets/TARGET.py       centre COMBINED_GRID on the stage-1 result
+#   edit config/TARGET.py        centre COMBINED_GRID on the stage-1 result
 #   ./grid.sh TARGET             this script
 #   python3 fit.py TARGET        stages 1-3
 
@@ -60,7 +60,7 @@ cd "$(dirname "$0")"
 
 usage() {
     sed -n '7,56p' "$0" | sed 's/^# \{0,1\}//'
-    echo; echo "Targets: $(ls targets/*.py | xargs -n1 basename -s .py | xargs)"
+    echo; echo "Targets: $(ls config/*.py | xargs -n1 basename -s .py | grep -vx -e __init__ -e model | xargs)"
     exit 1
 }
 
@@ -88,7 +88,7 @@ done
 if [[ "$GRID" == torus ]]; then
     STEPS=(skirt-gen skirt-run table)
 else
-    [[ -f "targets/$GRID.py" ]] || { echo "error: unknown target '$GRID' (no targets/$GRID.py)" >&2; exit 1; }
+    [[ -f "config/$GRID.py" && "$GRID" != model && "$GRID" != __init__ ]] || { echo "error: unknown target '$GRID' (no config/$GRID.py)" >&2; exit 1; }
     STEPS=(cloudy-gen cloudy-run skirt-gen skirt-run table)
 fi
 for s in "$FROM" "$TO" "$ONLY"; do

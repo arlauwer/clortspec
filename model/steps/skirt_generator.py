@@ -31,6 +31,9 @@ for a SphericalCellMedium:
   conserving the column of hydrogen, of every ion, and the n-weighted
   temperature. X-ray absorption along a radial ray depends only on these
   columns, while SKIRT memory scales with the number of imported cells.
+- Ions below SHELL_ION_MIN_FRACTION of their element are dropped (the element's
+  other ions absorb their share): every non-zero ion enlarges the cell's SKIRT
+  mix, and with it the memory (scripts/predict_memory.py estimates it).
 - Each radial shell becomes two cells, the northern wall theta_in..theta_out
   and the southern wall 180-theta_out..180-theta_in (deg from the pole). If
   the wall would reach into the torus (theta_out > 90 - alpha), it is clipped
@@ -78,22 +81,22 @@ def gas_mix_xml(kind: str = C.TORUS_GAS_MIX) -> str:
 	raise ValueError(f"unknown TORUS_GAS_MIX '{kind}' (use 'atomic' or 'ionic')")
 
 
-def instruments_xml() -> str:
+def instruments_xml(inclinations) -> str:
 	pad = " " * 20
 	return "\n".join(
 		f'{pad}<SEDInstrument instrumentName="i{inc:02d}" distance="1 Mpc" inclination="{inc} deg" '
 		f'azimuth="0 deg" roll="0 deg" radius="0 pc" recordComponents="true" numScatteringLevels="0" '
 		f'recordPolarization="false" recordStatistics="false"/>'
-		for inc in C.INCLINATIONS)
+		for inc in inclinations)
 
 
-def list_mesh(values, lo, hi) -> str:
+def list_mesh(values, lo, hi, digits: int = 8) -> str:
 	"""ListMesh points (normalised to [0, 1] over [lo, hi]) for the given borders."""
 	pts = sorted({min(1.0, max(0.0, (v - lo) / (hi - lo))) for v in values} | {0.0, 1.0})
-	return ", ".join(f"{p:.8f}" for p in pts)
+	return ", ".join(f"{p:.{digits}f}" for p in pts)
 
 
-def common_values() -> dict:
+def common_values(inclinations) -> dict:
 	lya = ""
 	if C.RESONANT_SCATTERING:
 		lya = ('                <lyaOptions type="LyaOptions">\n'
@@ -110,7 +113,7 @@ def common_values() -> dict:
 		minWavelength=f"{C.E_MAX_KEV:g} keV",
 		maxWavelength=f"{C.E_MIN_KEV:g} keV",
 		numWavelengths=C.N_ENERGY_BINS,
-		instruments=instruments_xml(),
+		instruments=instruments_xml(inclinations),
 	)
 
 
@@ -207,6 +210,24 @@ def rebin(run: dict, edges: np.ndarray):
 	return n_h, temperature, fractions
 
 
+def prune_trace_ions(fractions: dict, min_fraction: float = C.SHELL_ION_MIN_FRACTION) -> dict:
+	"""Zero the ions below min_fraction of their element in each cell, scaling the
+	element's remaining ions so that its total abundance is unchanged."""
+	if min_fraction <= 0:
+		return fractions
+	by_element = {}
+	for ion in fractions:
+		by_element.setdefault(ion.split("+")[0], []).append(ion)
+	pruned = {}
+	for ions in by_element.values():
+		values = np.array([fractions[ion] for ion in ions])
+		total = values.sum(axis=0)
+		kept = np.where(values >= min_fraction * total, values, 0.0)
+		scale = np.divide(total, kept.sum(axis=0), out=np.zeros_like(total), where=kept.sum(axis=0) > 0)
+		pruned.update(zip(ions, kept * scale))
+	return pruned
+
+
 CHECK_FIELDS = ["cloudy_run", "ok", "stop_reason", "logNH_target", "logNH_real", "r_out_real_cm",
 				"neutral_H_fraction", "Te_min", "Te_max", "n_zones"]
 
@@ -257,7 +278,7 @@ def generate_torus(output_root: Path = C.TORUS_GRID_DIR):
 		p = dict(zip(axis_names, combo))
 		run_dir = output_root / f"run_{i:05d}"
 		alpha = p["torus_opening_angle"]
-		values = common_values()
+		values = common_values(C.TORUS_INCLINATIONS)
 		# no resonant medium here: plain ExtinctionOnly (the torus gas mix still
 		# follows RESONANT_SCATTERING so its physics matches the combined grid)
 		values.update(simulationMode="ExtinctionOnly", lyaOptions="")
@@ -293,7 +314,14 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 	gas_mix = gas_mix_xml()
 	ion_list = template_ions()
 	edges = np.logspace(math.log10(C.SHELL_R_IN_CM), math.log10(C.SHELL_R_OUT_CM), C.SHELL_N_RADIAL + 1)
-	radial_mesh = list_mesh(list(edges) + [C.TORUS_R_IN_CM, C.TORUS_R_OUT_CM], C.SHELL_R_IN_CM, C.SHELL_R_OUT_CM)
+	# the spatial grid spans torus and shell; inside the (uniform) torus a few
+	# log-spaced borders are enough, its edges are always cell borders
+	r_min = min(C.TORUS_R_IN_CM, C.SHELL_R_IN_CM)
+	r_max = max(C.TORUS_R_OUT_CM, C.SHELL_R_OUT_CM)
+	torus_edges = np.logspace(math.log10(C.TORUS_R_IN_CM), math.log10(C.TORUS_R_OUT_CM), 11)
+	# 12 digits: over three decades, 8 would shift the borders by ~1e-6 of a cell
+	radial_mesh = list_mesh(list(edges) + list(torus_edges), r_min, r_max, digits=12)
+	inclinations = target.inclinations
 
 	shell_cache, checks = {}, {}
 	axis_names = list(grid)
@@ -313,7 +341,11 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 			else:
 				run = read_cloudy_run(cdir)
 				checks[cname] = check_cloudy(cname, run, p["shell_logNH"])
-				shell_cache[cname] = rebin(run, edges) if checks[cname]["ok"] else None
+				if checks[cname]["ok"]:
+					n_h, temperature, fractions = rebin(run, edges)
+					shell_cache[cname] = n_h, temperature, prune_trace_ions(fractions)
+				else:
+					shell_cache[cname] = None
 		if shell_cache[cname] is None:
 			skipped += 1
 			continue
@@ -325,14 +357,14 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 		th_out = min(th_out, 90.0 - alpha)
 		if th_in >= th_out:
 			raise ValueError(f"shell wall {p['shell_opening_angle']} deg lies entirely inside a torus "
-							 f"with alpha = {alpha} deg -- adjust COMBINED_GRID in targets/{target.name}.py")
+							 f"with alpha = {alpha} deg -- adjust COMBINED_GRID in config/{target.name}.py")
 
 		run_dir = output_root / f"run_{i:05d}"
-		values = common_values()
+		values = common_values(inclinations)
 		values.update(torus_values(p["torus_logNH"], alpha, gas_mix))
 		values.update(
-			gridMinRadius=f"{C.SHELL_R_IN_CM:.6e} cm",
-			gridMaxRadius=f"{C.SHELL_R_OUT_CM:.6e} cm",
+			gridMinRadius=f"{r_min:.6e} cm",
+			gridMaxRadius=f"{r_max:.6e} cm",
 			radialMeshPoints=radial_mesh,
 			polarMeshPoints=list_mesh([th_in, th_out, 90 - alpha, 90 + alpha, 180 - th_out, 180 - th_in], 0.0, 180.0),
 		)
@@ -357,7 +389,8 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 	if rows:
 		write_manifest(output_root / "grid_manifest.csv", rows)
 	n_clipped = sum(r["shell_clipped"] for r in rows)
-	print(f"Wrote {len(rows)} combined runs under {output_root}/ ({n_clipped} with the shell clipped by the torus); "
+	print(f"Wrote {len(rows)} combined runs under {output_root}/ ({n_clipped} with the shell clipped by the torus), "
+		  f"inclinations {inclinations}; "
 		  f"{len(check_rows) - len(bad)}/{len(check_rows)} CLOUDY runs OK, {skipped} combined runs skipped.")
 	C.report_sync(output_root, len(rows) + skipped, n_reset)
 	return 1 if (bad or skipped) else 0

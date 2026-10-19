@@ -4,7 +4,7 @@ cloudy_grid/
 torus_grid/
 shell_cloudy/
 combined_grid/
-runs/
+runs*/
 
 *.fits
 *.png

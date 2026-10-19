@@ -14,8 +14,8 @@ TABLES WRITTEN
   combined.fits   torus + ionised shell, one simulation (stage 2/3):
                   [logNH, OpenAngle,] logxi, logNHs, OpenAngS, PhoIndex, Incl
 Both use SKIRT's "total flux" (direct + scattered + fluorescence). The
-inclination axis comes for free: every SKIRT run records all
-config.INCLINATIONS. A grid axis with a single value (e.g. a torus parameter
+inclination axis comes for free: every SKIRT run records several inclinations
+(config.TORUS_INCLINATIONS, or config.combined_inclinations() of the target). A grid axis with a single value (e.g. a torus parameter
 fixed at the stage-1 result) is not a table parameter; its value is written
 as a COMMENT in the primary header.
 
@@ -177,7 +177,8 @@ def build_spectra_hdu(param_rows, spectra):
 # Driver
 # --------------------------------------------------------------------------
 
-def build_table(*, grid_dir: Path, grid: dict, model_name: str, out: Path, flux_columns=("total flux",)):
+def build_table(*, grid_dir: Path, grid: dict, inclinations, model_name: str, out: Path,
+				flux_columns=("total flux",)):
 	"""One atable from grid_dir/run_*/model_iNN_sed.dat over the varying axes of
 	`grid` plus inclination (last, fastest), normalised by the rest-frame
 	intrinsic band flux."""
@@ -193,7 +194,7 @@ def build_table(*, grid_dir: Path, grid: dict, model_name: str, out: Path, flux_
 	e_lo = e_hi = None
 	param_rows, spectra, missing = [], [], []
 	for row in manifest_rows:
-		for inc in C.INCLINATIONS:
+		for inc in inclinations:
 			sed_path = grid_dir / row["run"] / f"model_i{inc:02d}_sed.dat"
 			if not sed_path.exists():
 				missing.append(sed_path.parent.name)
@@ -229,7 +230,7 @@ def build_table(*, grid_dir: Path, grid: dict, model_name: str, out: Path, flux_
 	_ogip(primary)
 
 	axes = {name: sorted(float(v) for v in grid[name]) for name in varying}
-	axes["inclination"] = [float(i) for i in C.INCLINATIONS]
+	axes["inclination"] = [float(i) for i in inclinations]
 	fits.HDUList([
 		primary,
 		build_parameters_hdu(axes, C.FITS_NAMES),
@@ -248,10 +249,12 @@ def build_table(*, grid_dir: Path, grid: dict, model_name: str, out: Path, flux_
 if __name__ == "__main__":
 	which = sys.argv[1] if len(sys.argv) > 1 else ""
 	if which == "torus":
-		build_table(grid_dir=C.TORUS_GRID_DIR, grid=C.TORUS_GRID, model_name="torus", out=C.TORUS_TABLE)
+		build_table(grid_dir=C.TORUS_GRID_DIR, grid=C.TORUS_GRID, inclinations=C.TORUS_INCLINATIONS,
+					model_name="torus", out=C.TORUS_TABLE)
 	elif which:
 		target = C.load_target(which)
-		build_table(grid_dir=target.combined_dir, grid=target.combined_grid, model_name="combined",
+		build_table(grid_dir=target.combined_dir, grid=target.combined_grid, inclinations=target.inclinations,
+					model_name="combined",
 					out=target.combined_table)
 	else:
 		sys.exit(f"usage: python3 steps/build_xspec.py torus|TARGET   (targets: {', '.join(C.target_names())})")

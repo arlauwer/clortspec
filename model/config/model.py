@@ -1,10 +1,10 @@
 """
-config.py
-=========
-Single source of truth for the model. Every script imports from
-here, so geometry, energy range and the torus grid stay in sync. Everything
-that belongs to one AGN (redshift, Galactic N_H, the combined grid) lives in
-targets/<name>.py and is read with load_target().
+config/model.py
+===============
+Single source of truth for the model (scripts do `import config as C`, which
+re-exports this file). Geometry, energy range and the torus grid stay in sync
+this way. Everything that belongs to one AGN (redshift, Galactic N_H, the
+combined grid) lives in config/<name>.py and is read with load_target().
 
 MODEL
 -----
@@ -20,7 +20,11 @@ One point source (cut-off power law, photon index Gamma) surrounded by
    "ConicalShellGeometry" (Stalevski et al. 2012) with radial exponent 2: the
    gas fills the cone WALLS, polar angles theta_s -+ SHELL_WALL_DEG/2 from the
    polar axis (theta_s = shell opening angle, measured from the POLE), from
-   SHELL_R_IN to SHELL_R_OUT (well beyond the torus) with n ~ r^-2.
+   SHELL_R_IN to SHELL_R_OUT with n ~ r^-2. The shell starts at the outer
+   edge of the torus (narrow-line-region scales), so an observer looking
+   through the torus still sees the whole shell; the cone must stay inside the
+   torus opening (theta_s + wall/2 <= 90 - alpha), the region the source
+   ionises directly.
    Ionisation from CLOUDY. Because every radial ray through the wall is
    identical (same n(r), unobstructed view of the source), one 1D CLOUDY run
    describes the whole shell exactly; with n ~ r^-2 the local ionisation
@@ -29,8 +33,9 @@ One point source (cut-off power law, photon index Gamma) surrounded by
 
 Both media live in ONE SKIRT simulation, so photons scattered in the shell can
 still be absorbed by the torus on their way to an edge-on observer, and vice
-versa. Every simulation records several inclinations (INCLINATIONS), which
-become a table parameter.
+versa. Every simulation records several inclinations, which become a table
+parameter (TORUS_INCLINATIONS for the torus grid, combined_inclinations() for a
+target's combined grid).
 
 WORKFLOW (Bert's staged fit)
 ----------------------------
@@ -45,7 +50,7 @@ Stage 2/3: the combined torus + shell grid (COMBINED_GRID of the target). Its
 
 FILES
 -----
-  targets/<name>.py            target constants + COMBINED_GRID (in git)
+  config/<name>.py             target constants + COMBINED_GRID (in git)
   torus_grid/, torus.fits      shared stage-1 grid and table
   runs/<name>/shell_cloudy/    CLOUDY grid of the target
   runs/<name>/combined_grid/   SKIRT grid of the target
@@ -64,10 +69,11 @@ from pathlib import Path
 
 import numpy as np
 
-MODEL_DIR = Path(__file__).resolve().parent
+MODEL_DIR = Path(__file__).resolve().parent.parent
 OBS_ROOT = MODEL_DIR.parent          # <target>/spectra/ live here
 TEMPLATE_DIR = MODEL_DIR / "templates"
-TARGET_DIR = MODEL_DIR / "targets"
+TARGET_DIR = MODEL_DIR / "config"    # config/<name>.py, next to this file
+NOT_TARGETS = {"__init__", "model"}
 RUNS_DIR = MODEL_DIR / "runs"
 
 # --------------------------------------------------------------------------
@@ -116,10 +122,24 @@ def _cloudy_data_dir() -> Path:
 CLOUDY_ABUNDANCE_FILE = _cloudy_data_dir() / "abundances/solar_GASS10.abn"
 
 # Observer inclinations (deg from the polar axis), recorded in every SKIRT run
-# and used as the last table parameter. Note that the spectrum jumps where a
-# line of sight crosses the torus edge (90 - alpha) or the shell wall, and the
-# table interpolates linearly across such jumps.
-INCLINATIONS = [0, 15, 30, 45, 60, 75, 90]
+# and used as the last table parameter. XSPEC interpolates linearly between
+# them, also across the jump where a line of sight crosses the torus edge
+# (90 - alpha), which would blend an obscured and an unobscured spectrum.
+# The torus grid (stage 1, Incl frozen at the target's INCLINATION) records:
+TORUS_INCLINATIONS = [0, 15, 30, 45, 60, 75, 90]
+# A combined grid records only lines of sight through the torus, see
+# combined_inclinations(): starting this far inside the narrowest torus of the
+# grid, then every COMBINED_INCLINATION_STEP up to 90.
+COMBINED_INCLINATION_MARGIN = 5
+COMBINED_INCLINATION_STEP = 10
+
+
+def combined_inclinations(grid: dict) -> list:
+	"""Inclinations of a combined grid: strictly inside every torus of the grid
+	(> 90 - min(alpha)), so every table point is an obscured view and the table
+	never interpolates across the torus edge."""
+	first = int(math.floor(90 - min(grid["torus_opening_angle"]))) + COMBINED_INCLINATION_MARGIN
+	return sorted(set(range(first, 90, COMBINED_INCLINATION_STEP)) | {90})
 
 # --------------------------------------------------------------------------
 # Geometry (fixed)
@@ -127,14 +147,26 @@ INCLINATIONS = [0, 15, 30, 45, 60, 75, 90]
 
 TORUS_R_IN_CM = 1e18      # ~0.32 pc
 TORUS_R_OUT_CM = 1e19     # ~3.2 pc
-SHELL_R_IN_CM = 1e18      # launched at the torus inner radius ...
-SHELL_R_OUT_CM = 1e20     # ... and extending well beyond the torus (~32 pc)
+# The shell starts where the torus ends, so it is never behind the torus for an
+# observer looking through the torus (with the shell inside R_out, the torus
+# hid most of it at Incl = 90). R_out / R_in = 100 as before.
+SHELL_R_IN_CM = TORUS_R_OUT_CM   # ~3.2 pc
+SHELL_R_OUT_CM = 1e21            # ~320 pc
 SHELL_DENSITY_POWER = -2.0
-SHELL_WALL_DEG = 10.0     # angular thickness of the cone wall; None = filled cone
+# Angular thickness of the cone wall; None = filled cone. 20 deg covers about
+# twice the solid angle of the earlier 10 deg wall.
+SHELL_WALL_DEG = 20.0
 # CLOUDY zones are rebinned (column-conserving, per ion) onto this many
 # log-spaced radial shells before SKIRT. SKIRT memory scales with the number
 # of imported cells (each has its own ionic mix).
 SHELL_N_RADIAL = 60
+# Ions below this fraction of their element (in a cell) are set to zero and the
+# element's other ions scaled up to keep its abundance. Each non-zero ion adds
+# its fluorescence and line channels to the cell's SKIRT mix, and SKIRT memory
+# grows faster than the number of ions; trace ions add no visible opacity.
+# 0 keeps every ion CLOUDY reports. Changing it changes every shell.txt, so
+# all combined runs are redone.
+SHELL_ION_MIN_FRACTION = 1e-6
 
 # Resonant line scattering by H- and He-like ions in the shell (O VII/VIII,
 # Ne IX/X, Mg, Si, ... -- the main soft X-ray signature of photoionised gas).
@@ -169,7 +201,7 @@ TORUS_GRID = {
 }
 
 # Stage 2/3: torus + shell, one grid per target (COMBINED_GRID in
-# targets/<name>.py) with these axes, in this order.
+# config/<name>.py) with these axes, in this order.
 COMBINED_AXES = ["torus_logNH", "torus_opening_angle", "logxi", "shell_logNH", "shell_opening_angle",
 				 "photon_index"]
 SHELL_AXES = ["logxi", "shell_logNH", "shell_opening_angle", "photon_index"]  # what CLOUDY depends on
@@ -194,7 +226,7 @@ FITS_NAMES = {
 
 @dataclass(frozen=True)
 class Target:
-	"""One AGN: the contents of targets/<name>.py plus where its files live."""
+	"""One AGN: the contents of config/<name>.py plus where its files live."""
 	name: str                 # directory name, e.g. "3C234"
 	title: str                # for plots, e.g. "3C 234"
 	redshift: float
@@ -219,20 +251,32 @@ class Target:
 	def combined_table(self) -> Path:
 		return self.dir / "combined.fits"
 
+	@property
+	def inclinations(self) -> list:
+		"""Inclinations recorded in the combined grid."""
+		return combined_inclinations(self.combined_grid)
+
 
 def target_names():
-	return sorted(p.stem for p in TARGET_DIR.glob("*.py"))
+	return sorted(p.stem for p in TARGET_DIR.glob("*.py") if p.stem not in NOT_TARGETS)
 
 
 def load_target(name: str) -> Target:
-	"""Read targets/<name>.py (see targets/3C234.py for the format)."""
+	"""Read config/<name>.py (see config/3C234.py for the format)."""
 	path = TARGET_DIR / f"{name}.py"
-	if not path.exists():
+	if name in NOT_TARGETS or not path.exists():
 		raise SystemExit(f"unknown target '{name}': no {path} (targets: {', '.join(target_names())})")
 	conf = runpy.run_path(str(path))
 	grid = conf["COMBINED_GRID"]
 	if list(grid) != COMBINED_AXES:
 		raise SystemExit(f"{path}: COMBINED_GRID must have the axes {COMBINED_AXES}, in this order")
+	# every cone must fit in every torus opening: a clipped wall would no longer
+	# match the covering factor its CLOUDY run was computed with
+	alpha_max = max(grid["torus_opening_angle"])
+	theta_max = max(grid["shell_opening_angle"])
+	if shell_wall(theta_max)[1] > 90.0 - alpha_max + 1e-9:
+		raise SystemExit(f"{path}: shell_opening_angle {theta_max:g} + wall/2 = {shell_wall(theta_max)[1]:g} deg reaches "
+						 f"into the torus with alpha = {alpha_max:g} (edge at {90 - alpha_max:g} deg from the pole)")
 	if FIT_E_MAX_KEV * (1.0 + conf["REDSHIFT"]) > E_MAX_KEV:
 		raise SystemExit(f"{path}: z = {conf['REDSHIFT']} needs tables beyond E_MAX_KEV = {E_MAX_KEV} keV rest")
 	return Target(
