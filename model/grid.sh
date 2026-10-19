@@ -44,10 +44,12 @@
 #   ./grid.sh 3C234 -j 4 -t 5                 everything, 4 SKIRT runs x 5 threads
 #   ./grid.sh 3C234 --only skirt-run --dry-run     what is left?
 #   ./grid.sh 3C234 --to skirt-gen            CLOUDY here ...
-#   nohup ./grid.sh 3C234 --from skirt-run -j 8 -t 8 > 3C234.out 2>&1 &    ... SKIRT on a server
+#   nohup ./grid.sh 3C234 --from skirt-run -j 3 -t 8 > 3C234.out 2>&1 &    ... SKIRT on a server
 #
-# A SKIRT run of the combined grid peaks at 11-60 GB: JOBS ~ RAM / 60 GB,
-# THREADS ~ cores / JOBS.
+# Memory: with 30 equal-column shell cells a combined run peaks at ~17 GB at
+# logNHs 24 (was up to ~60 GB with 60 log-spaced cells). Before skirt-run,
+#   python3 scripts/predict_memory.py RESOURCE_DIR runs/TARGET/combined_grid/run_* --ram GB
+# prints the largest expected peak and how many JOBS fit; THREADS ~ cores / JOBS.
 #
 # The whole procedure for a target:
 #   python3 fit.py TARGET        stage 1, needs only torus.fits

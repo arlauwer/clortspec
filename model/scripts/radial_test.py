@@ -19,6 +19,11 @@ rms in 0.3-2 keV against 3-5% seed noise: log spacing puts only ~5 of 60 cells
 in the thin ionised layer (front at ~1.6 R_in at logNHs 24), so equal-column
 spacing is now the default and this test checks how many cells it needs.
 
+Result (3C 234, 2026-10-19): col30 matches col60 within the noise (0.3-2 keV
+3.8-4.4% rms per bin vs 3.0-4.6% noise, band flux 0.978; 2-10 keV 0.3-1.1%),
+col40 likewise (band flux 0.997); log60 was ~10% low in 0.3-2 keV, log30 ~23%.
+Peak memory col30 17.1, col40 22.6, col60 33.8 GB -> SHELL_N_RADIAL = 30.
+
 Default configuration: logNHs 24 and logxi 2, where the ionisation front lies
 inside the shell, so the radial structure matters most (for 3C445: ~44% of the
 hydrogen neutral). Override with --logxi/--logNHs/--angle/--gamma.

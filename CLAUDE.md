@@ -19,10 +19,12 @@ describe the model and each step in detail.
 - Grids run on a server (CLOUDY + SKIRT); only `combined.fits`, plots and fit
   results come back. `model/runs/*/combined_grid/` and `torus_grid/` are usually
   NOT present locally.
-- Combined SKIRT runs are expensive: up to ~60 GB RAM, so ~2 jobs at a time.
-  About 2/3 of the runtime is building the shell's ionic gas mixes (cells), not
-  photon packets. Cost per run scales with (#radial shell cells) x (ions/cell);
-  `scripts/predict_memory.py` estimates it from a run's `shell.txt`.
+- Combined SKIRT runs: memory scales with (#radial shell cells) x (ions/cell).
+  With 30 equal-column cells a run peaks at ~17 GB at logNHs 24 (60 log cells:
+  up to ~60 GB); runtime ~15 min at 24 threads, mostly photon transport (cell
+  building ~1 min). `scripts/predict_memory.py run_* --ram GB` estimates it
+  from the generated `shell.txt` (SKIRT peak ≈ 0.8x the predicted tables) and
+  says how many jobs fit. Server: 120 GB RAM.
 - Ask before changing the physics model; explain trade-offs with numbers. The
   user prefers fewer extra spectral components (no phenomenological
   `zpowerlw`/`apec` add-ons for now) and wants to understand choices.
@@ -53,7 +55,7 @@ equator, R 1e18–1e19 cm, parameterised by equatorial N_H) + hollow bi-cone she
 (wall `SHELL_WALL_DEG` = 20° thick centred at θ_s from the pole, n ∝ r^-2,
 R 1e19–1e21 cm, i.e. starting at the torus outer edge). One 1D CLOUDY run per
 (logxi, logNHs, θ_s, Γ); ξ = L(1–1000 Ryd)/(n_in R_in²) at the inner face; CLOUDY
-zones are rebinned column-conserving onto `SHELL_N_RADIAL` (60) cells of equal
+zones are rebinned column-conserving onto `SHELL_N_RADIAL` (30) cells of equal
 H column (`SHELL_RADIAL_SPACING = "column"`, borders per CLOUDY run; "log" is
 the old log-r spacing), trace ions < `SHELL_ION_MIN_FRACTION` (1e-6) dropped. Both media in one SKIRT run
 (`LyaExtinctionOnly` for resonant line scattering). Tables: every spectrum
@@ -133,12 +135,14 @@ Next steps / open items:
    14-20% low. Cause: n ∝ r^-2 makes local ξ constant, so ionisation follows
    the column; the front is sharp at ~1.6 R_in (37% of the column) and log
    spacing gave it only ~5 of 60 cells. Switched to equal-column cells.
-   Round 2 (user runs on 3C 234 only): `radial_test.py skirt` adds run_col30/
-   40/60 (log runs already exist and are not regenerated); pick the smallest
-   colN that matches col60 within the seed noise and set `SHELL_N_RADIAL`.
-   Predicted mix memory: col30 21, col40 28, col60 42 GB (log60 43 GB).
-   Optional refinement not done: put one border exactly at the front.
-2. Then `./grid.sh 3C234` / `3C445` on the server with the new grids, and refit.
+   Round 2 (3C 234, equal-column): col30 matches col60 within the seed noise
+   (soft 3.8-4.4% rms vs 3.0-4.6%, band flux -2.2%; hard unchanged), col40
+   -0.3%; log60 was ~10% low in the soft band. Peaks col30/40/60: 17.1/22.6/
+   33.8 GB. -> `SHELL_N_RADIAL = 30`. Not done (not needed): a border exactly
+   at the front.
+2. Next: on the server `./grid.sh TARGET --to skirt-gen`, then
+   `predict_memory.py ... --ram 120` to pick -j (expect 3-4 x ~8 threads),
+   then `--from skirt-run`; refit.
    Check `fit_stage3.txt` for parameters at limits and steppar logxi/logNHs for
    grid-node artefacts.
 3. 3C 445 may still lack soft flux: α = 60 limits the cone to ≤ 30° from the

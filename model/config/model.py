@@ -158,14 +158,18 @@ SHELL_DENSITY_POWER = -2.0
 SHELL_WALL_DEG = 20.0
 # CLOUDY zones are rebinned (column-conserving, per ion) onto this many
 # radial shells before SKIRT. SKIRT memory scales with the number of imported
-# cells (each has its own ionic mix).
-SHELL_N_RADIAL = 60
+# cells (each has its own ionic mix). scripts/radial_test.py (3C 234, logNHs 24,
+# logxi 2, equal-column spacing): 30 cells match 60 within the Monte Carlo
+# noise (0.3-2 keV: 3.8-4.4% rms per bin vs 3.0-4.6% seed noise; band flux
+# -2.2%, 2-10 keV unchanged) at half the memory (17 vs 34 GB peak).
+SHELL_N_RADIAL = 30
 # How the shell borders are placed: "column" = every shell holds the same
 # hydrogen column (borders differ per CLOUDY run), "log" = log-spaced in r.
 # With n ~ r^-2 the local ionisation parameter is constant, so the ionisation
 # structure follows the column, not r: log spacing put only ~5 of 60 cells in
 # the ionised layer at logNHs 24 (front at ~1.6 R_in) and ~8 in the last 1% of
-# the column; equal-column spacing puts ~11 of 30 cells there.
+# the column; equal-column spacing puts ~11 of 30 cells there. Log-spaced 60
+# cells gave ~10% less 0.3-2 keV flux than equal-column 60 (30: ~23% less).
 SHELL_RADIAL_SPACING = "column"
 # Ions below this fraction of their element (in a cell) are set to zero and the
 # element's other ions scaled up to keep its abundance. Each non-zero ion adds

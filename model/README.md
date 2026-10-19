@@ -18,7 +18,7 @@ runs/<TARGET>/       shell_cloudy/, combined_grid/, combined.fits, fit_stage*
 ```bash
 python3 fit.py 3C445           # stage 1 (torus only); stops if combined.fits is missing
 # edit config/3C445.py: centre COMBINED_GRID on runs/3C445/fit_stage1.txt
-./grid.sh 3C445 -j 2 -t 16     # CLOUDY + SKIRT + table -> runs/3C445/combined.fits
+./grid.sh 3C445 -j 3 -t 8      # CLOUDY + SKIRT + table -> runs/3C445/combined.fits
 python3 fit.py 3C445           # stages 1-3
 ```
 
@@ -52,8 +52,11 @@ The stages:
 - After editing a grid, rerun it: runs with unchanged inputs keep their
   results. Adding a value to an axis renumbers the runs, so most are redone.
 
-Memory: a combined SKIRT run takes up to ~60 GB, so use JOBS ≈ RAM / 60 GB and
-THREADS ≈ cores / JOBS. About 2/3 of the run time is building the cells.
+Memory: with 30 equal-column shell cells a combined SKIRT run peaks at ~17 GB
+at logNHs 24 (it was up to ~60 GB with 60 log-spaced cells). To size JOBS,
+generate the models first and let `predict_memory.py --ram` (below) report the
+largest expected peak; THREADS ≈ cores / JOBS. Building the cells now takes
+~1 min of a ~15 min run (24 threads); the rest is photon transport.
 
 Single steps:
 
@@ -69,7 +72,9 @@ The server needs `skirt`, `cloudy` and Python with numpy and astropy (no HEASoft
 ```bash
 rsync -av --exclude 'runs/*/*.tar.gz' --exclude __pycache__ model/ server:model/
 ssh server
-cd model && nohup ./grid.sh 3C445 -j 2 -t 16 > 3C445.out 2>&1 &
+cd model && ./grid.sh 3C445 --to skirt-gen          # CLOUDY + SKIRT models
+python3 scripts/predict_memory.py RESOURCE_DIR runs/3C445/combined_grid/run_* --ram 120 | tail -3
+nohup ./grid.sh 3C445 --from skirt-run -j 3 -t 8 > 3C445.out 2>&1 &   # JOBS from the line above
 tail -f 3C445.out
 # afterwards, copy back runs/3C445/combined.fits (and torus.fits if rebuilt)
 ```
@@ -98,8 +103,9 @@ Optional entries in a target file: `INCLINATION` (default 90), `SPECTRA_DIR`.
 ## Helper scripts
 
 ```bash
-python3 scripts/predict_memory.py RESOURCE_DIR runs/3C445/combined_grid/run_00012 [--min-fraction 1e-4]
-# memory estimate per run; RESOURCE_DIR = .../SKIRT9_Resources_AtomsMolecules/XRayIonicGas
+python3 scripts/predict_memory.py RESOURCE_DIR runs/3C445/combined_grid/run_* [--ram GB] [--min-fraction 1e-4]
+# memory estimate per run + largest expected peak (+ JOBS that fit in --ram);
+# RESOURCE_DIR = .../SKIRT9_Resources_AtomsMolecules/XRayIonicGas
 
-python3 scripts/radial_test.py cloudy|skirt|compare 3C234   # radial cells: equal-column 30/40/60 vs log 60, see its --help
+python3 scripts/radial_test.py cloudy|skirt|compare 3C234   # radial-cell convergence test (done: 30 equal-column cells), see its --help
 ```
