@@ -101,5 +101,5 @@ Optional entries in a target file: `INCLINATION` (default 90), `SPECTRA_DIR`.
 python3 scripts/predict_memory.py RESOURCE_DIR runs/3C445/combined_grid/run_00012 [--min-fraction 1e-4]
 # memory estimate per run; RESOURCE_DIR = .../SKIRT9_Resources_AtomsMolecules/XRayIonicGas
 
-python3 scripts/radial_test.py cloudy|skirt|compare 3C445   # SHELL_N_RADIAL 30 vs 60, see its --help
+python3 scripts/radial_test.py cloudy|skirt|compare 3C234   # radial cells: equal-column 30/40/60 vs log 60, see its --help
 ```

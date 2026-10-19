@@ -27,10 +27,13 @@ SHELL (combined grid only)
 --------------------------
 CLOUDY output (runs/TARGET/shell_cloudy/run_*/sim.{zones,ovr,species,out}) -> shell.txt
 for a SphericalCellMedium:
-- CLOUDY zones are rebinned onto SHELL_N_RADIAL log-spaced radial shells,
-  conserving the column of hydrogen, of every ion, and the n-weighted
-  temperature. X-ray absorption along a radial ray depends only on these
-  columns, while SKIRT memory scales with the number of imported cells.
+- CLOUDY zones are rebinned onto SHELL_N_RADIAL radial shells, conserving the
+  column of hydrogen, of every ion, and the n-weighted temperature. X-ray
+  absorption along a radial ray depends only on these columns, while SKIRT
+  memory scales with the number of imported cells. With SHELL_RADIAL_SPACING
+  = "column" (default) every shell holds the same hydrogen column, so the
+  borders follow each CLOUDY run and the cells sit where the gas (and the
+  ionisation front) is; "log" spaces them logarithmically in r.
 - Ions below SHELL_ION_MIN_FRACTION of their element are dropped (the element's
   other ions absorb their share): every non-zero ion enlarges the cell's SKIRT
   mix, and with it the memory (scripts/predict_memory.py estimates it).
@@ -190,6 +193,27 @@ def read_cloudy_run(run_dir: Path):
 	)
 
 
+def shell_edges(run: dict, n: int = None, spacing: str = None) -> np.ndarray:
+	"""The n + 1 radial shell borders from SHELL_R_IN_CM to SHELL_R_OUT_CM.
+
+	"column": borders at equal steps of the cumulative hydrogen column of this
+	CLOUDY run (piecewise linear in r, so the steps are exact); "log": log-spaced."""
+	n = n or C.SHELL_N_RADIAL
+	spacing = spacing or C.SHELL_RADIAL_SPACING
+	if spacing == "log":
+		return np.logspace(math.log10(C.SHELL_R_IN_CM), math.log10(C.SHELL_R_OUT_CM), n + 1)
+	if spacing != "column":
+		raise ValueError(f"SHELL_RADIAL_SPACING must be 'column' or 'log', not {spacing!r}")
+	zone_edges = np.concatenate(([run["rmin"][0]], run["rmax"]))
+	cum = np.concatenate(([0.0], np.cumsum(run["hden"] * (run["rmax"] - run["rmin"]))))
+	edges = np.interp(np.linspace(0.0, cum[-1], n + 1), cum, zone_edges)
+	# CLOUDY's first/last zone edges can differ from the model radii by rounding
+	edges[0], edges[-1] = C.SHELL_R_IN_CM, C.SHELL_R_OUT_CM
+	if np.any(np.diff(edges) <= 0):
+		raise ValueError("equal-column shell borders are not increasing")
+	return edges
+
+
 def rebin(run: dict, edges: np.ndarray):
 	"""Column-conserving rebinning of piecewise-constant zone profiles onto `edges`.
 
@@ -313,14 +337,13 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 	template = COMBINED_TEMPLATE.read_text()
 	gas_mix = gas_mix_xml()
 	ion_list = template_ions()
-	edges = np.logspace(math.log10(C.SHELL_R_IN_CM), math.log10(C.SHELL_R_OUT_CM), C.SHELL_N_RADIAL + 1)
 	# the spatial grid spans torus and shell; inside the (uniform) torus a few
-	# log-spaced borders are enough, its edges are always cell borders
+	# log-spaced borders are enough, its edges are always cell borders. The
+	# shell borders depend on the CLOUDY run (SHELL_RADIAL_SPACING), so the
+	# radial mesh is built per CLOUDY run below.
 	r_min = min(C.TORUS_R_IN_CM, C.SHELL_R_IN_CM)
 	r_max = max(C.TORUS_R_OUT_CM, C.SHELL_R_OUT_CM)
 	torus_edges = np.logspace(math.log10(C.TORUS_R_IN_CM), math.log10(C.TORUS_R_OUT_CM), 11)
-	# 12 digits: over three decades, 8 would shift the borders by ~1e-6 of a cell
-	radial_mesh = list_mesh(list(edges) + list(torus_edges), r_min, r_max, digits=12)
 	inclinations = target.inclinations
 
 	shell_cache, checks = {}, {}
@@ -342,14 +365,17 @@ def generate_combined(target: C.Target, output_root: Path = None, cloudy_root: P
 				run = read_cloudy_run(cdir)
 				checks[cname] = check_cloudy(cname, run, p["shell_logNH"])
 				if checks[cname]["ok"]:
+					edges = shell_edges(run)
 					n_h, temperature, fractions = rebin(run, edges)
-					shell_cache[cname] = n_h, temperature, prune_trace_ions(fractions)
+					# 12 digits: over three decades, 8 would shift the borders by ~1e-6 of a cell
+					radial_mesh = list_mesh(list(edges) + list(torus_edges), r_min, r_max, digits=12)
+					shell_cache[cname] = edges, radial_mesh, n_h, temperature, prune_trace_ions(fractions)
 				else:
 					shell_cache[cname] = None
 		if shell_cache[cname] is None:
 			skipped += 1
 			continue
-		n_h, temperature, fractions = shell_cache[cname]
+		edges, radial_mesh, n_h, temperature, fractions = shell_cache[cname]
 
 		alpha = p["torus_opening_angle"]
 		th_in, th_out = C.shell_wall(p["shell_opening_angle"])

@@ -157,9 +157,16 @@ SHELL_DENSITY_POWER = -2.0
 # twice the solid angle of the earlier 10 deg wall.
 SHELL_WALL_DEG = 20.0
 # CLOUDY zones are rebinned (column-conserving, per ion) onto this many
-# log-spaced radial shells before SKIRT. SKIRT memory scales with the number
-# of imported cells (each has its own ionic mix).
+# radial shells before SKIRT. SKIRT memory scales with the number of imported
+# cells (each has its own ionic mix).
 SHELL_N_RADIAL = 60
+# How the shell borders are placed: "column" = every shell holds the same
+# hydrogen column (borders differ per CLOUDY run), "log" = log-spaced in r.
+# With n ~ r^-2 the local ionisation parameter is constant, so the ionisation
+# structure follows the column, not r: log spacing put only ~5 of 60 cells in
+# the ionised layer at logNHs 24 (front at ~1.6 R_in) and ~8 in the last 1% of
+# the column; equal-column spacing puts ~11 of 30 cells there.
+SHELL_RADIAL_SPACING = "column"
 # Ions below this fraction of their element (in a cell) are set to zero and the
 # element's other ions scaled up to keep its abundance. Each non-zero ion adds
 # its fluorescence and line channels to the cell's SKIRT mix, and SKIRT memory

@@ -53,8 +53,9 @@ equator, R 1e18–1e19 cm, parameterised by equatorial N_H) + hollow bi-cone she
 (wall `SHELL_WALL_DEG` = 20° thick centred at θ_s from the pole, n ∝ r^-2,
 R 1e19–1e21 cm, i.e. starting at the torus outer edge). One 1D CLOUDY run per
 (logxi, logNHs, θ_s, Γ); ξ = L(1–1000 Ryd)/(n_in R_in²) at the inner face; CLOUDY
-zones are rebinned column-conserving onto `SHELL_N_RADIAL` (60) cells, trace
-ions < `SHELL_ION_MIN_FRACTION` (1e-6) dropped. Both media in one SKIRT run
+zones are rebinned column-conserving onto `SHELL_N_RADIAL` (60) cells of equal
+H column (`SHELL_RADIAL_SPACING = "column"`, borders per CLOUDY run; "log" is
+the old log-r spacing), trace ions < `SHELL_ION_MIN_FRACTION` (1e-6) dropped. Both media in one SKIRT run
 (`LyaExtinctionOnly` for resonant line scattering). Tables: every spectrum
 normalised to intrinsic rest-frame 2–10 keV photon flux = 1, so `norm` carries
 over between tables; single-valued grid axes are fixed and left out of the
@@ -127,9 +128,16 @@ Changes made (uncommitted; the user commits):
   READMEs and grid.sh updated.
 
 Next steps / open items:
-1. The user runs `scripts/radial_test.py` on the server (3C 445, logNHs 24,
-   logxi 2): if n30 differs from n60 no more than the seed-1 rerun does, set
-   `SHELL_N_RADIAL = 30` (halves memory and cell-building time).
+1. Radial test, round 1 (log spacing, both targets, logNHs 24, logxi 2): n30
+   vs n60 differ 22-28% rms in 0.3-2 keV (seed noise 3-5%), n30 soft flux
+   14-20% low. Cause: n ∝ r^-2 makes local ξ constant, so ionisation follows
+   the column; the front is sharp at ~1.6 R_in (37% of the column) and log
+   spacing gave it only ~5 of 60 cells. Switched to equal-column cells.
+   Round 2 (user runs on 3C 234 only): `radial_test.py skirt` adds run_col30/
+   40/60 (log runs already exist and are not regenerated); pick the smallest
+   colN that matches col60 within the seed noise and set `SHELL_N_RADIAL`.
+   Predicted mix memory: col30 21, col40 28, col60 42 GB (log60 43 GB).
+   Optional refinement not done: put one border exactly at the front.
 2. Then `./grid.sh 3C234` / `3C445` on the server with the new grids, and refit.
    Check `fit_stage3.txt` for parameters at limits and steppar logxi/logNHs for
    grid-node artefacts.
